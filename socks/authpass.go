@@ -103,9 +103,12 @@ func (ap *AuthPassword) Handler(conn net.Conn) (err error) {
 		SendResponse(writer, 0x04)
 		return
 	}
+	defer dstconn.Close()
 	SendResponse(writer, 0x00)
 
 	go func () {
+		defer conn.Close()
+		defer dstconn.Close()
 		io.Copy(conn, dstconn)
 	}()
 	io.Copy(dstconn, conn)

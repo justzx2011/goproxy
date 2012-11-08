@@ -38,15 +38,19 @@ func init() {
 
 func main() {
 	sutils.TcpServer(listenaddr, func (conn net.Conn) (err error) {
+		defer conn.Close()
 		tcpAddr, err := net.ResolveTCPAddr("tcp4", serveraddr)
 		if err != nil { return }
 		dstconn, err := net.DialTCP("tcp4", nil, tcpAddr)
+		defer dstconn.Close()
 		if err != nil { return }
 
 		secdst, err := secconn.NewConn(dstconn, key, iv)
 		if err != nil { return }
 
 		go func () {
+			defer conn.Close()
+			defer dstconn.Close()
 			io.Copy(conn, secdst)
 		}()
 		io.Copy(secdst, conn)
