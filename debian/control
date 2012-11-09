@@ -1,0 +1,14 @@
+Source: goproxy
+Section: net
+Priority: extra
+Maintainer: Shell Xu <shell909090@gmail.com>
+Build-Depends: debhelper (>= 8.0.0), golang (>= 1.0)
+Standards-Version: 3.9.3
+Homepage: https://github.com/shell909090/goproxy
+
+Package: goproxy
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, python
+Description: socksv5 based proxy written by go.
+ goproxy is a socksv5 proxy written by go. Connection can be crypto by aes or
+ des. this might help for people in China to corss GFW.

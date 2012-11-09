@@ -8,6 +8,10 @@ TARGET=goproxy
 
 all: $(TARGET)
 
+install:
+	install -d $DESTDIR/usr/bin/
+	install -s goproxy $DESTDIR/usr/bin/
+
 clean:
 	rm -f $(TARGET)
 
