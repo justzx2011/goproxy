@@ -50,7 +50,7 @@ do_start()
 	    echo "daemon not start due to /etc/default/$NAME rundaemon set to 0."
 	    return 3
 	fi
-	start-stop-daemon --start --quiet --pidfile $PIDFILE --test > /dev/null \
+	start-stop-daemon --start --quiet --pidfile $PIDFILE --exec $DAEMON --test > /dev/null \
 		|| return 1
 	start-stop-daemon --start --quiet --pidfile $PIDFILE --exec /usr/bin/daemonized -- \
 	        -p $PIDFILE -l $LOGFILE $DAEMON	$DAEMON_ARGS $DAEMON_OPTS \
