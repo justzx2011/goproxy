@@ -2,8 +2,24 @@ package tunnel
 
 type Tunnel struct {
 	conn *net.Conn
+	serverid uint32
 	dispatcher map[int]Pair
 	c chan Packet
+}
+
+func NewTunnel(addr net.UDPAddr) (t *Tunnel, err error) {
+	conn, err := net.DialUDP("udp4", nil, addr)
+	if err != nil { return }
+
+	t = &Tunnel{conn}
+	// get serverid
+	t.dispatcher = make(map[int]Pair)
+	t.c = make(chan Packet)
+	return
+}
+
+func (t *Tunnel) Send (b []byte) (err error) {
+	
 }
 
 func (t *Tunnel) main () {
@@ -11,6 +27,7 @@ func (t *Tunnel) main () {
 	var readbuf []byte
 
 	for {
+		readbuf = make([]byte, 2048)
 		select {
 		case t.conn.Read(readbuf): // FIXME: length not enough
 			pkt := PacketUnpack(readbuf)
@@ -24,58 +41,4 @@ func (t *Tunnel) main () {
 			conn.Write(buf) // FIXME: buffer full
 		}
 	}
-}
-
-type Pair struct {
-	t *Tunnel
-	id uint16
-	buf []byte
-	rc chan Packet
-}
-
-func (p *Pair) Read(b []byte) (n int, err error) {
-	for len(p.buf) == 0 {
-		pkt := <- p.rc
-		append(buf, pkt.content...)
-	}
-	n = copy(b, p.buf)
-	p.buf = p.buf[n:]
-	b = b[:n]
-	return
-}
-
-func (p *Pair) Write(b []byte) (n int, err error) {
-	if len(b) > 1024 {
-		err = errors.New("packet too long")
-		return
-	}
-	pkt := Packet{p.id, b}
-	p.t.c <- pkt
-	n = len(b)
-	return 
-}
-
-type Packet struct {
-	id uint16
-	content []byte
-}
-
-func PacketUnpack(buf []byte) (p *Packet) {
-	var p Packet
-	reader := bytes.Buffer(buf)
-	binary.Read(reader, binary.BigEndian, &(p.id))
-	binary.Read(reader, binary.BigEndian, &(p.flag))
-	p.content = reader.Bytes()
-	return &p
-}
-
-func (p *Packet) Pack() (buf []byte, err error) {
-	writer := bytes.Buffer(buf)
-	binary.Write(writer, binary.BigEndian, &(m.id))
-	binary.Write(writer, binary.BigEndian, &(m.flag))
-	writer.Write(m.content)
-	if len(buf) > 1024 {
-		err = errors.New("packet too long")
-	}
-	return
 }

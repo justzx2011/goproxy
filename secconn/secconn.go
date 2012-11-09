@@ -1,7 +1,6 @@
 package secconn
 
 import (
-	"crypto/aes"
 	"crypto/cipher"
 	"encoding/hex"
 	"log"
@@ -15,16 +14,6 @@ type SecConn struct {
 	conn net.Conn
 	in cipher.Stream
 	out cipher.Stream
-}
-
-func NewConn(conn net.Conn, key []byte, iv []byte) (sc *SecConn, err error) {
-	sc = new(SecConn)
-	sc.conn = conn
-	block, err := aes.NewCipher(key)
-	if err != nil { return }
-	sc.in = cipher.NewCFBDecrypter(block, iv)
-	sc.out = cipher.NewCFBEncrypter(block, iv)
-	return
 }
 
 func (sc *SecConn) Read(b []byte) (n int, err error) {
