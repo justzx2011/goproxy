@@ -19,6 +19,7 @@ NAME=goproxy             # Introduce the short server's name here
 DAEMON=/usr/bin/goproxy  # Introduce the server's location here
 DAEMON_ARGS=""           # Arguments to run the daemon with
 PIDFILE=/var/run/$NAME.pid
+LOGFILE=/var/log/$NAME.log
 SCRIPTNAME=/etc/init.d/$NAME
 
 # Exit if the package is not installed
@@ -43,10 +44,16 @@ do_start()
 	#   0 if daemon has been started
 	#   1 if daemon was already running
 	#   2 if daemon could not be started
+	#   3 if configuration file not ready for daemon
+        if [ $RUNDAEMON -eq 0 ]
+	then
+	    echo "daemon not start due to /etc/default/$NAME rundaemon set to 0."
+	    return 3
+	fi
 	start-stop-daemon --start --quiet --pidfile $PIDFILE --exec $DAEMON --test > /dev/null \
 		|| return 1
-	start-stop-daemon --start --quiet --pidfile $PIDFILE --exec $DAEMON -- \
-		$DAEMON_ARGS \
+	start-stop-daemon --start --quiet --pidfile $PIDFILE --exec /usr/bin/daemonized -- \
+	        -p $PIDFILE -l $LOGFILE $DAEMON	$DAEMON_ARGS \
 		|| return 2
 	# Add code here, if necessary, that waits for the process to be ready
 	# to handle requests from services started subsequently which depend
@@ -112,15 +119,15 @@ case "$1" in
   status)
        status_of_proc "$DAEMON" "$NAME" && exit 0 || exit $?
        ;;
-  #reload|force-reload)
+  reload|force-reload)
 	#
 	# If do_reload() is not implemented then leave this commented out
 	# and leave 'force-reload' as an alias for 'restart'.
 	#
-	#log_daemon_msg "Reloading $DESC" "$NAME"
-	#do_reload
-	#log_end_msg $?
-	#;;
+	log_daemon_msg "Reloading $DESC" "$NAME"
+	do_reload
+	log_end_msg $?
+	;;
   restart|force-reload)
 	#
 	# If the "reload" option is implemented then remove the
@@ -145,7 +152,7 @@ case "$1" in
 	;;
   *)
 	#echo "Usage: $SCRIPTNAME {start|stop|restart|reload|force-reload}" >&2
-	echo "Usage: $SCRIPTNAME {start|stop|status|restart|force-reload}" >&2
+	echo "Usage: $SCRIPTNAME {start|stop|status|reload|restart|force-reload}" >&2
 	exit 3
 	;;
 esac

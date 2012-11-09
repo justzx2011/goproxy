@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -20,13 +21,19 @@ var passfile string
 
 func init() {
 	flag.BoolVar(&client_mode, "client", false, "client mode")
-	flag.StringVar(&cipher, "cipher", "aes", "crypto cipher")
+	flag.StringVar(&cipher, "cipher", "aes", "aes des tripledes rc4")
 	flag.StringVar(&keyfile, "keyfile", "file.key", "key and iv file")
 	flag.BoolVar(&server_mode, "server", false, "server mode")
 	flag.StringVar(&listenaddr, "listen", ":8899", "listen address")
 	flag.StringVar(&socksaddr, "socks", ":1080", "socksv5 address")
 	flag.StringVar(&passfile, "passfile", "", "password file")
 	flag.Parse()
+}
+
+func run_help () {
+	fmt.Println("goproxy [--help] [--client] [--cipher method] [-keyfile file.key]")
+	fmt.Println("\t[-server] [--listen :8899] [--socks :1080] [--passfile filename]")
+	fmt.Println("\tmethod: aes des tripledes rc4")
 }
 
 func run_client () {

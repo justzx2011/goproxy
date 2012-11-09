@@ -2,9 +2,8 @@
 # sourced by /etc/init.d/goproxy
 # installed at /etc/default/goproxy by the maintainer scripts
 
-#
-# This is a POSIX shell fragment
-#
+RUNDAEMON=0
+LOGFILE="/var/log/$NAME.log"
 
 # Additional options that are passed to the Daemon.
 DAEMON_OPTS=""

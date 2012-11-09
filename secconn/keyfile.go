@@ -24,58 +24,71 @@ func ReadKey(keyfile string, keysize int, ivsize int) (key []byte, iv []byte, er
 }
 
 func NewSecConn(method string, keyfile string) (f func (conn net.Conn) (sc *SecConn, err error), err error) {
-	var key []byte
-	var iv []byte
+	var g func(net.Conn, []byte, []byte) (*SecConn, error)
+	var keylen int
+	var ivlen int
 
 	switch(method){
 	case "aes":
-		key, iv, err = ReadKey(keyfile, 16, 16)
-		if err != nil { return }
-		f = func(conn net.Conn) (sc *SecConn, err error) {
-			block, err := aes.NewCipher(key)
-			if err != nil { return }
-			in := cipher.NewCFBDecrypter(block, iv)
-			out := cipher.NewCFBEncrypter(block, iv)
-			sc = &SecConn{conn, in, out}
-			return
-		}
-		return
+		keylen = 16
+		ivlen = 16
+		g = NewAesConn
 	case "des":
-		key, iv, err = ReadKey(keyfile, 16, 8)
-		if err != nil { return }
-		f = func(conn net.Conn) (sc *SecConn, err error) {
-			block, err := des.NewCipher(key)
-			if err != nil { return }
-			in := cipher.NewCFBDecrypter(block, iv)
-			out := cipher.NewCFBEncrypter(block, iv)
-			sc = &SecConn{conn, in, out}
-			return
-		}
-		return 
+		keylen = 16
+		ivlen = 8
+		g = NewDesConn
 	case "tripledes":
-		key, iv, err = ReadKey(keyfile, 16, 8)
-		if err != nil { return }
-		f = func(conn net.Conn) (sc *SecConn, err error) {
-			block, err := des.NewTripleDESCipher(key)
-			if err != nil { return }
-			in := cipher.NewCFBDecrypter(block, iv)
-			out := cipher.NewCFBEncrypter(block, iv)
-			sc = &SecConn{conn, in, out}
-			return
-		}
-		return
+		keylen = 16
+		ivlen = 8
+		g = NewTripleDesConn
 	case "rc4":
-		key, iv, err = ReadKey(keyfile, 16, 0)
-		if err != nil { return }
-		f = func(conn net.Conn) (sc *SecConn, err error) {
-			in, err := rc4.NewCipher(key)
-			if err != nil { return }
-			out, err := rc4.NewCipher(key)
-			if err != nil { return }
-			sc = &SecConn{conn, in, out}
-			return
-		}
-		return
+		keylen = 16
+		ivlen = 0
+		g = NewRC4Conn
 	}
+
+	var key []byte
+	var iv []byte
+	key, iv, err = ReadKey(keyfile, keylen, ivlen)
+	if err != nil { return }
+	f = func(conn net.Conn) (sc *SecConn, err error) {
+		return g(conn, key, iv)
+	}
+	return
+}
+
+func NewAesConn(conn net.Conn, key []byte, iv []byte) (sc *SecConn, err error) {
+	block, err := aes.NewCipher(key)
+	if err != nil { return }
+	in := cipher.NewCFBDecrypter(block, iv)
+	out := cipher.NewCFBEncrypter(block, iv)
+	sc = &SecConn{conn, in, out}
+	return
+}
+
+func NewDesConn(conn net.Conn, key []byte, iv []byte) (sc *SecConn, err error) {
+	block, err := des.NewCipher(key)
+	if err != nil { return }
+	in := cipher.NewCFBDecrypter(block, iv)
+	out := cipher.NewCFBEncrypter(block, iv)
+	sc = &SecConn{conn, in, out}
+	return
+}
+
+func NewTripleDesConn(conn net.Conn, key []byte, iv []byte) (sc *SecConn, err error) {
+	block, err := des.NewTripleDESCipher(key)
+	if err != nil { return }
+	in := cipher.NewCFBDecrypter(block, iv)
+	out := cipher.NewCFBEncrypter(block, iv)
+	sc = &SecConn{conn, in, out}
+	return
+}
+
+func NewRC4Conn(conn net.Conn, key []byte, iv []byte) (sc *SecConn, err error) {
+	in, err := rc4.NewCipher(key)
+	if err != nil { return }
+	out, err := rc4.NewCipher(key)
+	if err != nil { return }
+	sc = &SecConn{conn, in, out}
 	return
 }

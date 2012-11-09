@@ -6,11 +6,14 @@
 ## X-URL: 
 TARGET=goproxy
 
-all: $(TARGET)
+all: build
+
+build: $(TARGET)
 
 install:
 	install -d $(DESTDIR)/usr/bin/
 	install -s goproxy $(DESTDIR)/usr/bin/
+	install daemonized $(DESTDIR)/usr/bin/
 
 clean:
 	rm -f $(TARGET)
