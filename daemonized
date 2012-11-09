@@ -170,13 +170,12 @@ def main():
         print main.__doc__
         return
 
-    name = path.basename(args[0])
-    pidfile = path.realpath(
-        path.expanduser(optdict.get('-p', '/var/run/%s.pid' % name)))
-    logfile = path.realpath(
-        path.expanduser(optdict.get('-l', '/var/log/%s.log' % name)))
-
     if '-f' not in optdict:
+        name = path.basename(args[0])
+        pidfile = path.realpath(
+            path.expanduser(optdict.get('-p', '/var/run/%s.pid' % name)))
+        logfile = path.realpath(
+            path.expanduser(optdict.get('-l', '/var/log/%s.log' % name)))
         daemonized(pidfile=pidfile, logfile=logfile)
     initlog(logging.WARNING)
     logging.info('daemoniz finished, new pid %d' % os.getpid())

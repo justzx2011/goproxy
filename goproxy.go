@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"io"
 	"log"
 	"net"
@@ -30,12 +29,6 @@ func init() {
 	flag.Parse()
 }
 
-func run_help () {
-	fmt.Println("goproxy [--help] [--client] [--cipher method] [-keyfile file.key]")
-	fmt.Println("\t[-server] [--listen :8899] [--socks :1080] [--passfile filename]")
-	fmt.Println("\tmethod: aes des tripledes rc4")
-}
-
 func run_client () {
 	// need --client --cipher --keyfile --socks serveraddr
 	var err error
@@ -50,7 +43,7 @@ func run_client () {
 		log.Fatal("crypto not work, cipher or keyfile wrong.")
 	}
 
-	sutils.TcpServer(socksaddr, func (conn net.Conn) (err error) {
+	err = sutils.TcpServer(socksaddr, func (conn net.Conn) (err error) {
 		defer conn.Close()
 		tcpAddr, err := net.ResolveTCPAddr("tcp4", serveraddr)
 		if err != nil { return }
@@ -69,6 +62,9 @@ func run_client () {
 		io.Copy(secdst, conn)
 		return
 	})
+	if err != nil {
+		log.Println(err.Error())
+	}
 }
 
 func run_server () {
@@ -81,11 +77,14 @@ func run_server () {
 
 	ap := socks.NewAuthPassword()
 	if len(passfile) > 0 { ap.LoadFile(passfile) }
-	sutils.TcpServer(listenaddr, func (conn net.Conn) (err error) {
+	err = sutils.TcpServer(listenaddr, func (conn net.Conn) (err error) {
 		secsrc, err := f(conn)
 		if err != nil { return }
 		return ap.Handler(secsrc)
 	})
+	if err != nil {
+		log.Println(err.Error())
+	}
 	return
 }
 
@@ -93,9 +92,12 @@ func run_socks () {
 	// need --socks --passfile
 	ap := socks.NewAuthPassword()
 	if len(passfile) > 0 { ap.LoadFile(passfile) }
-	sutils.TcpServer(socksaddr, func (conn net.Conn) (err error){
+	err := sutils.TcpServer(socksaddr, func (conn net.Conn) (err error){
 		return ap.Handler(conn)
 	})
+	if err != nil {
+		log.Println(err.Error())
+	}
 }
 
 func main() {
