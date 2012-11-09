@@ -9,8 +9,8 @@ TARGET=goproxy
 all: $(TARGET)
 
 install:
-	install -d $DESTDIR/usr/bin/
-	install -s goproxy $DESTDIR/usr/bin/
+	install -d $(DESTDIR)/usr/bin/
+	install -s goproxy $(DESTDIR)/usr/bin/
 
 clean:
 	rm -f $(TARGET)
@@ -18,6 +18,5 @@ clean:
 goproxy: goproxy.go
 	go build $^
 	chmod 755 $@
-	strip $@
 
 ### Makefile ends here
