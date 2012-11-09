@@ -6,7 +6,7 @@ import (
 
 func main () {
 	var f func ()
-	fmt.Println(f)
+	// fmt.Println(f)
 	if f == nil {
 		fmt.Println("ok")
 	}else{
