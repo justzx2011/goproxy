@@ -50,7 +50,7 @@ do_start()
 	    echo "daemon not start due to /etc/default/$NAME rundaemon set to 0."
 	    return 3
 	fi
-	start-stop-daemon --start --quiet --pidfile $PIDFILE --exec $DAEMON --test > /dev/null \
+	start-stop-daemon --start --quiet --pidfile $PIDFILE --test > /dev/null \
 		|| return 1
 	start-stop-daemon --start --quiet --pidfile $PIDFILE --exec /usr/bin/daemonized -- \
 	        -p $PIDFILE -l $LOGFILE $DAEMON	$DAEMON_ARGS $DAEMON_OPTS \
@@ -95,7 +95,7 @@ do_reload() {
 	# restarting (for example, when it is sent a SIGHUP),
 	# then implement that here.
 	#
-	start-stop-daemon --stop --signal 1 --quiet --pidfile $PIDFILE --name $NAME
+	start-stop-daemon --stop --signal 1 --quiet --pidfile $PIDFILE
 	return 0
 }
 

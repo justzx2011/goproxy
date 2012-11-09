@@ -5,10 +5,10 @@ import (
 	"net"
 )
 
-func TcpServer(addr string, handler func (conn net.Conn) (err error)) (err error) {
-	tcpAddr, err := net.ResolveTCPAddr("tcp4", addr)
+func TcpServer(addr string, handler func (net.Conn) (error)) (err error) {
+	tcpAddr, err := net.ResolveTCPAddr("tcp", addr)
 	if err != nil { return }
-	listener, err := net.ListenTCP("tcp4", tcpAddr)
+	listener, err := net.ListenTCP("tcp", tcpAddr)
 	if err != nil { return }
 	for {
 		conn, err := listener.Accept()

@@ -6,7 +6,7 @@ import (
 	"errors"
 )
 
-func ReadLines(r io.Reader, f func(line string) (err error)) (err error) {
+func ReadLines(r io.Reader, f func(string) (error)) (err error) {
 	var line string
 
 	reader := bufio.NewReader(r)

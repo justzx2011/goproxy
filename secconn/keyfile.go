@@ -23,7 +23,7 @@ func ReadKey(keyfile string, keysize int, ivsize int) (key []byte, iv []byte, er
 	return
 }
 
-func NewSecConn(method string, keyfile string) (f func (conn net.Conn) (sc *SecConn, err error), err error) {
+func NewSecConn(method string, keyfile string) (f func (net.Conn) (*SecConn, error), err error) {
 	var g func(net.Conn, []byte, []byte) (*SecConn, error)
 	var keylen int
 	var ivlen int
