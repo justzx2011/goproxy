@@ -40,7 +40,7 @@ func init() {
 	}
 }
 
-var f func (net.Conn) (*secconn.SecConn, error) = nil
+var f func (net.Conn) (net.Conn, error) = nil
 
 func run_client () {
 	// need --listenaddr serveraddr
