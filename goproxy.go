@@ -10,6 +10,7 @@ import (
 	"./socks"
 	"./sutils"
 	"./secconn"
+	"./tunnel"
 )
 
 var cipher string
@@ -25,7 +26,7 @@ func Usage() {
 
 func init() {
 	// flag.Usage = Usage
-	flag.StringVar(&runmode, "mode", "", "client/server mode")
+	flag.StringVar(&runmode, "mode", "", "udpcli/udpsrv/client/server mode")
 	flag.StringVar(&cipher, "cipher", "aes", "aes des tripledes rc4")
 	flag.StringVar(&keyfile, "keyfile", "", "key and iv file")
 	flag.StringVar(&listenaddr, "listen", "", "listen address")
@@ -41,6 +42,46 @@ func init() {
 }
 
 var f func (net.Conn) (net.Conn, error) = nil
+
+func run_udpcli () {
+	// need --listenaddr serveraddr
+	var err error
+	var serveraddr string
+
+	// if len(keyfile) == 0 {
+	// 	log.Println("WARN: client mode without keyfile")
+	// }
+	
+	if len(flag.Args()) < 1 {
+		log.Fatal("args not enough")
+	}
+	serveraddr = flag.Args()[0]
+
+	err = sutils.TcpServer(listenaddr, func (conn net.Conn) (err error) {
+		var dstconn net.Conn
+		defer conn.Close()
+
+		dstconn, err = tunnel.DialTunnel(serveraddr)
+		if err != nil { return }
+		defer dstconn.Close()
+
+		// if f != nil {
+		// 	dstconn, err = f(dstconn)
+		// 	if err != nil { return }
+		// }
+
+		go func () {
+			defer conn.Close()
+			defer dstconn.Close()
+			io.Copy(conn, dstconn)
+		}()
+		io.Copy(dstconn, conn)
+		return
+	})
+	if err != nil {
+		log.Println(err.Error())
+	}
+}
 
 func run_client () {
 	// need --listenaddr serveraddr
@@ -83,6 +124,26 @@ func run_client () {
 	}
 }
 
+func run_udpsrv () {
+	// need --passfile --listenaddr
+	var err error
+		
+	ap := socks.NewAuthPassword()
+	if len(passfile) > 0 { ap.LoadFile(passfile) }
+	err = tunnel.UdpServer(listenaddr, func (conn net.Conn) (err error) {
+		// if f != nil {
+		// 	conn, err = f(conn)
+		// 	if err != nil { return }
+		// }
+		return ap.Handler(conn)
+	})
+	if err != nil {
+		log.Println(err.Error())
+	}
+	return
+
+}
+
 func run_server () {
 	// need --passfile --listenaddr
 	var err error
@@ -114,8 +175,12 @@ func main() {
 	}
 
 	switch runmode {
+	case "udpcli":
+		run_udpcli()
 	case "client":
 		run_client()
+	case "udpsrv":
+		run_udpsrv()
 	case "server":
 		run_server()
 	default:
