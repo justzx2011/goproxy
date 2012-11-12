@@ -12,52 +12,50 @@ type TunnelConn struct {
 }
 
 func (tc TunnelConn) Read(b []byte) (n int, err error) {
-	for {
-		if tc.t.buf.Len() == 0 { <- tc.t.recvcha }
-		n, err = tc.t.buf.Read(b)
-		if DEBUG { log.Println("read", n, err) }
-		if err == nil && tc.t.buf.Len() > 0 && len(tc.t.recvcha) == 0{
-			tc.t.recvcha <- 1
-		}
-		if err != io.EOF { return }
-	}
+	var ok bool
+	b, ok = <- tc.t.c_read
+	n = len(b)
+	if !ok { err = io.EOF }
+	log.Println(b)
 	return
 }
 
 func (tc TunnelConn) Write(b []byte) (n int, err error) {
 	n = len(b)
 	err = SplitBytes(b, PACKETSIZE, func (bi []byte) (err error){
-		err = tc.t.send(0, bi)
-		if err != nil { return }
+		tc.t.c_write <- bi
 		return 
 	})
-	// fixme: I should wait until sendbuf empty
 	return
 }
 
 func (tc TunnelConn) Close() (err error) {
-	tc.t.status = FINWAIT
-	err = tc.t.send(FIN, []byte{})
-	<- tc.t.c_close
+	tc.t.c_closing <- 1
+	<- tc.t.c_closed
 	return
 }
 
 func (tc TunnelConn) LocalAddr() net.Addr {
-	return tc.t.conn.LocalAddr()
+	// return tc.t.conn.LocalAddr()
+	// 哈哈
+	return tc.t.remote
 }
 
 func (tc TunnelConn) RemoteAddr() net.Addr {
-	return tc.t.conn.RemoteAddr()
+	return tc.t.remote
 }
 
 func (tc TunnelConn) SetDeadline(t time.Time) error {
-	return tc.t.conn.SetDeadline(t)
+	// return tc.t.conn.SetDeadline(t)
+	return nil
 }
 
 func (tc TunnelConn) SetReadDeadline(t time.Time) error {
-	return tc.t.conn.SetReadDeadline(t)
+	// return tc.t.conn.SetReadDeadline(t)
+	return nil
 }
 
 func (tc TunnelConn) SetWriteDeadline(t time.Time) error {
-	return tc.t.conn.SetWriteDeadline(t)
+	// return tc.t.conn.SetWriteDeadline(t)
+	return nil
 }
