@@ -15,7 +15,7 @@ func (tc TunnelConn) Read(b []byte) (n int, err error) {
 	for {
 		if tc.t.buf.Len() == 0 { <- tc.t.recvcha }
 		n, err = tc.t.buf.Read(b)
-		log.Println("read", n, err)
+		if DEBUG { log.Println("read", n, err) }
 		if err == nil && tc.t.buf.Len() > 0 && len(tc.t.recvcha) == 0{
 			tc.t.recvcha <- 1
 		}

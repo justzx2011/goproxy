@@ -102,7 +102,7 @@ def socks5(proxyaddr, username=None, password=None, rdns=True):
 
 def main():
     sock = socket.socket()
-    socks5_create(sock, ('127.0.0.1', 1080), 'shell', '123')
+    socks5_create(sock, ('127.0.0.1', 1081), 'shell', '123')
     socks5_connect(sock, ('localhost', 8118), True)
     sock.sendall('GET / HTTP/1.1\r\n\r\n')
     print sock.recv(8192)

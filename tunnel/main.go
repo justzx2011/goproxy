@@ -5,6 +5,8 @@ import (
 	"net"
 )
 
+const DEBUG = false
+
 type Server struct {
 	conn net.Conn
 	dispatcher map[string]*Tunnel
@@ -31,10 +33,10 @@ func UdpServer (addr string, handler func (net.Conn) (error)) (err error) {
 		n, remote, err = conn.ReadFromUDP(buf)
 		if err != nil { return }
 
-		log.Println("server", remote, buf[:n])
+		if DEBUG { log.Println("server recv", remote, buf[:n]) }
 
 		t, ok = srv.dispatcher[remote.String()]
-		log.Println("dispatch", t, ok)
+		if DEBUG { log.Println("dispatch", t, ok) }
 		if !ok {
 			if buf[0] != SYN {
 				log.Println("packet to unknow tunnel")
@@ -45,12 +47,12 @@ func UdpServer (addr string, handler func (net.Conn) (error)) (err error) {
 			srv.dispatcher[remote.String()] = t
 			func (remote *net.UDPAddr) {
 				t.onclose = func () {
-					log.Println("close tunnel", remote.String())
+					if DEBUG { log.Println("close tunnel", remote.String()) }
 					delete(srv.dispatcher, remote.String())
 				}
 			}(remote)
 			go handler(TunnelConn{t})
-			log.Println("create tunnel", t)
+			log.Println("create tunnel", remote.String())
 		}
 
 		err = t.OnData(buf[:n])
@@ -96,7 +98,7 @@ func client_main (t *Tunnel) {
 			continue
 		}
 
-		log.Println("client", buf[:n])
+		if DEBUG { log.Println("client recv", buf[:n]) }
 
 		err = t.OnData(buf[:n])
 		if err != nil {

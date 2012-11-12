@@ -92,12 +92,11 @@ func (t *Tunnel) OnData(buf []byte) (err error) {
 	var pkt *Packet
 	var p *Packet
 
-	log.Println()
-	log.Println("recv in", t.Dump())
+	if DEBUG { log.Println("recv in", t.Dump()) }
 	pkt, err = Unpack(buf)
 	if err != nil { return }
 
-	log.Println("recv packet", pkt.Dump())
+	if DEBUG { log.Println("recv packet", pkt.Dump()) }
 
 	if (pkt.flag & ACK) != 0 {
 		err = t.ackRecv(pkt)
@@ -126,14 +125,11 @@ func (t *Tunnel) OnData(buf []byte) (err error) {
 	}
 	if t.buf.Len() > 0 && len(t.recvcha) == 0 { t.recvcha <- 1 }
 
-	log.Println("recv out", t.Dump())
-	log.Println()
+	if DEBUG { log.Println("recv out", t.Dump()) }
 	return
 }
 
 func (t *Tunnel) procPacket(pkt *Packet) (err error) {
-
-	log.Println("proc packet")
 
 	if (pkt.flag & ACK) != 0 {
 		if t.status == SYNRCVD {
@@ -238,7 +234,7 @@ func (t *Tunnel) send(flag uint8, content []byte) (err error) {
 		t.sendseq += 1
 	}
 
-	log.Println("send out", t.Dump())
+	if DEBUG { log.Println("send out", t.Dump()) }
 	return
 }
 
@@ -248,8 +244,8 @@ func (t *Tunnel) sendPacket(pkt *Packet) (err error) {
 	if err != nil { return }
 
 	var n int
-	log.Println("send in", pkt.Dump())
-	log.Println("send", t.remote, buf)
+	if DEBUG { log.Println("send in", pkt.Dump()) }
+	if DEBUG { log.Println("send", t.remote, buf) }
 	if t.remote == nil {
 		n, err = t.conn.Write(buf)
 	}else{
