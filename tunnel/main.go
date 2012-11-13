@@ -1,17 +1,16 @@
 package tunnel
 
 import (
+	"bytes"
+	"encoding/binary"
 	"errors"
 	"log"
 	"net"
 )
 
-const DEBUG = false
-
 type Server struct {
 	conn *net.UDPConn
 	dispatcher map[string]*Tunnel
-	// FIXME: 蛋疼
 	c_send chan *DataBlock
 }
 
@@ -55,6 +54,13 @@ func UdpServer (addr string, handler func (net.Conn) (error)) (err error) {
 	return
 }
 
+// func hashaddr (addr *net.UDPAddr) string {
+// 	buf := bytes.NewBuffer([]byte{})
+// 	buf.Write(addr.IP)
+// 	binary.Write(buf, binary.BigEndian, uint16(addr.Port))
+// 	return buf.String()
+// }
+
 func (srv *Server) create_tunnel(remote *net.UDPAddr, buf []byte, handler func (net.Conn) (error)) (t *Tunnel, err error) {
 	var ok bool
 	remotekey := remote.String()
@@ -75,9 +81,8 @@ func (srv *Server) create_tunnel(remote *net.UDPAddr, buf []byte, handler func (
 	}
 
 	srv.dispatcher[remotekey] = t
-	go handler(TunnelConn{t})
+	go handler(NewTunnelConn(t))
 	log.Println("create tunnel", remotekey)
-
 	return
 }	
 
@@ -107,17 +112,15 @@ func DialTunnel(addr string) (tc net.Conn, err error) {
 	go client_sender(t, conn)
 	go client_main(t, conn)
 
-	t.status = SYNSENT
-	err = t.send(SYN, []byte{})
-	if err != nil { return }
-
-	<- t.c_connect
-	return TunnelConn{t}, nil
+	t.c_evin <- SYN
+	<- t.c_evout
+	return NewTunnelConn(t), nil
 }
 
 func client_sender (t *Tunnel, conn net.Conn) {
 	var err error
 	var db *DataBlock
+	defer conn.Close()
 	for {
 		db = <- t.c_send
 		_, err = conn.Write(db.buf)
@@ -147,4 +150,3 @@ type DataBlock struct {
 	remote *net.UDPAddr
 	buf []byte
 }
-

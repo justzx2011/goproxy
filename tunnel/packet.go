@@ -9,9 +9,54 @@ import (
 )
 
 const (
+	DEBUG = false
 	PACKETSIZE = 512
+	MSL = 10000 // ms
+	FINWAIT_2 = 2000 // ms
+	KEEPALIVE = 3600 // s
+	DELAYACK = 200 // ms
+	CONNEST = 75 // s
 	MAXRESEND = 3
 )
+
+const (
+	SYN = uint8(0x04)
+	ACK = uint8(0x02)
+	FIN = uint8(0x01)
+	END = uint8(0xff)
+)
+
+const (
+	CLOSED = 0
+	SYNRCVD = 1
+	SYNSENT = 2
+	EST = 3
+	FINWAIT = 4
+	TIMEWAIT = 5
+	LASTACK = 6
+)
+
+func DumpStatus(st uint8) string {
+	switch st{
+	case CLOSED: return "CLOSED"
+	case SYNRCVD: return "SYNRCVD"
+	case SYNSENT: return "SYNSENT"
+	case EST: return "EST"
+	case FINWAIT: return "FINWAIT"
+	case TIMEWAIT: return "TIMEWAIT"
+	case LASTACK: return "LASTACK"
+	}
+	return "unknown"
+}
+
+func NewPacket(t *Tunnel, flag uint8, content []byte) (p *Packet) {
+	p = new(Packet)
+	p.flag = flag
+	p.seq = t.sendseq
+	p.ack = t.recvseq
+	p.content = content
+	return
+}
 
 type Packet struct {
 	flag uint8
@@ -21,21 +66,6 @@ type Packet struct {
 	timeout *time.Timer
 	resend_count int
 	t time.Time
-}
-
-const (
-	SYN = uint8(0x04)
-	ACK = uint8(0x02)
-	FIN = uint8(0x01)
-)
-
-func NewPacket(t *Tunnel, flag uint8, content []byte) (p *Packet) {
-	p = new(Packet)
-	p.flag = flag
-	p.seq = t.sendseq
-	p.ack = t.recvseq
-	p.content = content
-	return
 }
 
 func (p Packet) Dump() string {
