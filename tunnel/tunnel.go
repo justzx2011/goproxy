@@ -376,6 +376,7 @@ func (t *Tunnel) on_retrans () (err error) {
 func (t *Tunnel) Close () (err error) {
 	if t.onclose != nil { t.onclose() }
 	t.c_evin <- END
+	close(t.c_read)
 	close(t.c_send)
 	return
 }

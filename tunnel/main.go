@@ -30,7 +30,7 @@ func UdpServer (addr string, handler func (net.Conn) (error)) (err error) {
 	var t *Tunnel
 
 	for {
-		buf = make([]byte, PACKETSIZE * 2)
+		buf = make([]byte, 2048)
 		n, remote, err = conn.ReadFromUDP(buf)
 		if err != nil {
 			log.Println(err.Error())
@@ -39,7 +39,7 @@ func UdpServer (addr string, handler func (net.Conn) (error)) (err error) {
 
 		if DEBUG { log.Println("server recv", remote, buf[:n]) }
 
-		t, err = srv.create_tunnel(remote, buf[:n], handler)
+		t, err = srv.get_tunnel(remote, buf[:n], handler)
 		if err != nil {
 			log.Println(err.Error())
 			continue
@@ -54,7 +54,7 @@ func UdpServer (addr string, handler func (net.Conn) (error)) (err error) {
 	return
 }
 
-func (srv *Server) create_tunnel(remote *net.UDPAddr, buf []byte, handler func (net.Conn) (error)) (t *Tunnel, err error) {
+func (srv *Server) get_tunnel(remote *net.UDPAddr, buf []byte, handler func (net.Conn) (error)) (t *Tunnel, err error) {
 	var ok bool
 	remotekey := remote.String()
 	t, ok = srv.dispatcher[remotekey]
@@ -80,10 +80,12 @@ func (srv *Server) create_tunnel(remote *net.UDPAddr, buf []byte, handler func (
 }	
 
 func (srv *Server) sender () {
+	var ok bool
 	var err error
 	var db *DataBlock
 	for {
-		db = <- srv.c_send
+		db, ok = <- srv.c_send
+		if !ok { return }
 		_, err = srv.conn.WriteToUDP(db.buf, db.remote)
 		if err != nil { log.Println(err.Error()) }
 	}
@@ -112,10 +114,13 @@ func DialTunnel(addr string) (tc net.Conn, err error) {
 
 func client_sender (t *Tunnel, conn net.Conn) {
 	var err error
+	var ok bool
 	var db *DataBlock
 	defer conn.Close()
+
 	for {
-		db = <- t.c_send
+		db, ok = <- t.c_send
+		if !ok { break }
 		_, err = conn.Write(db.buf)
 		if err != nil { log.Println(err.Error()) }
 	}
@@ -127,7 +132,7 @@ func client_main (t *Tunnel, conn net.Conn) {
 	var buf []byte
 
 	for {
-		buf = make([]byte, PACKETSIZE * 2)
+		buf = make([]byte, 2048)
 		n, err = conn.Read(buf)
 		if err != nil {
 			log.Println(err.Error())
@@ -137,9 +142,4 @@ func client_main (t *Tunnel, conn net.Conn) {
 		if DEBUG { log.Println("client recv", buf[:n]) }
 		t.c_recv <- buf[:n]
 	}
-}
-
-type DataBlock struct {
-	remote *net.UDPAddr
-	buf []byte
 }

@@ -1,5 +1,10 @@
 package tunnel
 
+import (
+	"bytes"
+	"net"
+)
+
 const (
 	DEBUG = false
 	PACKETSIZE = 512
@@ -56,6 +61,11 @@ func (ph *PacketQueue) Pop() (p *Packet) {
 	p = (*ph)[0]
 	*ph = (*ph)[1:]
 	return
+}
+
+type DataBlock struct {
+	remote *net.UDPAddr
+	buf []byte
 }
 
 func SplitBytes(b []byte, size int, f func ([]byte) (error)) (err error) {
