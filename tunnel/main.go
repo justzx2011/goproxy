@@ -69,13 +69,13 @@ func (srv *Server) create_tunnel(remote *net.UDPAddr, buf []byte, handler func (
 	if err != nil { return }
 	t.c_send = srv.c_send
 	t.onclose = func () {
-		log.Println("close tunnel", remotekey)
+		if DEBUG { log.Println("close tunnel", remotekey) }
 		delete(srv.dispatcher, remotekey)
 	}
 
 	srv.dispatcher[remotekey] = t
 	go handler(NewTunnelConn(t))
-	log.Println("create tunnel", remotekey)
+	if DEBUG { log.Println("create tunnel", remotekey) }
 	return
 }	
 
