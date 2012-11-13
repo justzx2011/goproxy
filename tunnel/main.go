@@ -1,8 +1,8 @@
 package tunnel
 
 import (
-	"bytes"
-	"encoding/binary"
+	// "bytes"
+	// "encoding/binary"
 	"errors"
 	"log"
 	"net"
@@ -21,7 +21,7 @@ func UdpServer (addr string, handler func (net.Conn) (error)) (err error) {
 	if err != nil { return }
 	defer conn.Close()
 
-	srv := &Server{conn, make(map[string]*Tunnel), make(chan *DataBlock, 10)}
+	srv := &Server{conn, make(map[string]*Tunnel), make(chan *DataBlock, 1)}
 	go srv.sender()
 
 	var n int
@@ -53,13 +53,6 @@ func UdpServer (addr string, handler func (net.Conn) (error)) (err error) {
 	}
 	return
 }
-
-// func hashaddr (addr *net.UDPAddr) string {
-// 	buf := bytes.NewBuffer([]byte{})
-// 	buf.Write(addr.IP)
-// 	binary.Write(buf, binary.BigEndian, uint16(addr.Port))
-// 	return buf.String()
-// }
 
 func (srv *Server) create_tunnel(remote *net.UDPAddr, buf []byte, handler func (net.Conn) (error)) (t *Tunnel, err error) {
 	var ok bool
@@ -108,7 +101,7 @@ func DialTunnel(addr string) (tc net.Conn, err error) {
 
 	t, err = NewTunnel(nil)
 	if err != nil { return }
-	t.c_send = make(chan *DataBlock, 10)
+	t.c_send = make(chan *DataBlock, 1)
 	go client_sender(t, conn)
 	go client_main(t, conn)
 

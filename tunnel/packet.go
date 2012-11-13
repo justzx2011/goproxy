@@ -11,15 +11,20 @@ import (
 const (
 	DEBUG = false
 	PACKETSIZE = 512
-	MSL = 10000 // ms
-	FINWAIT_2 = 2000 // ms
-	KEEPALIVE = 3600 // s
-	DELAYACK = 200 // ms
-	CONNEST = 75 // s
-	MAXRESEND = 3
+	MAXRESEND = 5
+	RETRANS_SACKCOUNT = 2
 )
 
 const (
+	TM_MSL = 10000 // ms
+	TM_FINWAIT = 2000 // ms
+	TM_KEEPALIVE = 3600 // s
+	TM_DELAYACK = 200 // ms
+	TM_CONNEST = 75 // s
+)
+
+const (
+	SACK = uint8(0x10)
 	SYN = uint8(0x04)
 	ACK = uint8(0x02)
 	FIN = uint8(0x01)
@@ -49,6 +54,17 @@ func DumpStatus(st uint8) string {
 	return "unknown"
 }
 
+type Packet struct {
+	flag uint8
+	seq int32
+	ack int32
+	content []byte
+
+	t time.Time
+	timeout *time.Timer
+	resend_count int
+}
+
 func NewPacket(t *Tunnel, flag uint8, content []byte) (p *Packet) {
 	p = new(Packet)
 	p.flag = flag
@@ -56,16 +72,6 @@ func NewPacket(t *Tunnel, flag uint8, content []byte) (p *Packet) {
 	p.ack = t.recvseq
 	p.content = content
 	return
-}
-
-type Packet struct {
-	flag uint8
-	seq int32
-	ack int32
-	content []byte
-	timeout *time.Timer
-	resend_count int
-	t time.Time
 }
 
 func (p Packet) Dump() string {
@@ -115,26 +121,16 @@ func Unpack(b []byte) (p *Packet, err error) {
 	return
 }
 
-type PacketHeap []*Packet
+type PacketQueue []*Packet
 
-func (ph PacketHeap) Len() int { return len(ph) }
-
-func (ph PacketHeap) Less(i, j int) bool {
-	return (ph[i].seq - ph[j].seq) < 0
+func (ph *PacketQueue) Push(p *Packet) {
+	*ph = append(*ph, p)
 }
 
-func (ph PacketHeap) Swap(i, j int) {
-	ph[i], ph[j] = ph[j], ph[i]
-}
-
-func (ph *PacketHeap) Push(x interface{}) {
-	*ph = append(*ph, x.(*Packet))
-}
-
-func (ph *PacketHeap) Pop() interface{} {
-	x := (*ph)[len(*ph)-1]
-	*ph = (*ph)[:len(*ph)-1]
-	return x
+func (ph *PacketQueue) Pop() (p *Packet) {
+	p = (*ph)[0]
+	*ph = (*ph)[1:]
+	return
 }
 
 func SplitBytes(b []byte, size int, f func ([]byte) (error)) (err error) {
