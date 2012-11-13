@@ -51,12 +51,6 @@ func UdpServer (addr string, handler func (net.Conn) (error)) (err error) {
 		}
 
 		t.c_recv <- buf[:n]
-
-		// err = t.OnData(buf[:n])
-		// if err != nil {
-		// 	log.Println(err.Error())
-		// 	continue
-		// }
 	}
 	return
 }
