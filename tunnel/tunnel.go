@@ -66,7 +66,7 @@ func NewTunnel(remote *net.UDPAddr) (t *Tunnel) {
 	t.c_read = make(chan []byte, 1)
 	t.c_write = make(chan []byte, 1)
 	t.c_evin = make(chan uint8, 1)
-	t.c_evout = make(chan uint8)
+	t.c_evout = make(chan uint8, 1)
 
 	go t.main()
 	return
@@ -89,10 +89,9 @@ func (t *Tunnel) main () {
 	defer func () {
 		if DEBUG { log.Println("tunnel main quit") }
 		t.status = CLOSED
-		for len(t.c_read) != 0 {
-			<- t.c_read
-		}
+		for len(t.c_read) != 0 { <- t.c_read }
 		close(t.c_read)
+		if len(t.c_evout) == 0 { t.c_evout <- EV_CLOSED }
 		if t.onclose != nil { t.onclose() }
 	}()
 
@@ -212,6 +211,7 @@ func (t *Tunnel) proc_syn (pkt *Packet) (err error) {
 	t.recvseq += 1
 	if (pkt.flag & ACK) != 0 {
 		if t.status != SYNSENT {
+			t.ev_in <- END
 			return errors.New("status wrong, SYN ACK, " + t.Dump())
 		}
 		t.connest = nil
@@ -221,6 +221,7 @@ func (t *Tunnel) proc_syn (pkt *Packet) (err error) {
 		t.c_evout <- EV_CONNECTED
 	}else{
 		if t.status != CLOSED {
+			t.ev_in <- END
 			return errors.New("status wrong, SYN, " + t.Dump())
 		}
 		t.status = SYNRCVD
@@ -234,6 +235,7 @@ func (t *Tunnel) proc_fin (pkt *Packet) (err error) {
 	t.recvseq += 1
 	if (pkt.flag & ACK) != 0 {
 		if t.status != FINWAIT {
+			t.ev_in <- END
 			return errors.New("status wrong, FIN ACK, " + t.Dump())
 		}else{ t.finwait = nil }
 		t.status = TIMEWAIT
@@ -257,6 +259,7 @@ func (t *Tunnel) proc_fin (pkt *Packet) (err error) {
 			// wait 2*MSL to run close
 			t.timewait = time.After(2 * time.Duration(TM_MSL) * time.Millisecond)
 		default:
+			t.ev_in <- END
 			return errors.New("status wrong, FIN, " + t.Dump())
 		}
 	}
