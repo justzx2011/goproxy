@@ -2,7 +2,7 @@ package tunnel
 
 import (
 	"errors"
-	"log"
+	"fmt"
 	"math/rand"
 	"net"
 )
@@ -29,11 +29,11 @@ func (srv *Server) sender () {
 	for {
 		db, _ = <- srv.c_send
 		if DROPFLAG && rand.Intn(100) >= 85 {
-			log.Println("DEBUG: server drop packet")
+			logger.Debug(fmt.Sprintf("[%d_srv] drop packet", db.remote.Port))
 			continue
 		}
 		_, err = srv.conn.WriteToUDP(db.buf, db.remote)
-		if err != nil { log.Println(err.Error()) }
+		if err != nil { logger.Err("[server] " + err.Error()) }
 	}
 }
 
@@ -42,7 +42,7 @@ func (srv *Server) get_tunnel(remote *net.UDPAddr, buf []byte) (t *Tunnel, err e
 	remotekey := remote.String()
 	t, ok = srv.dispatcher[remotekey]
 	if ok {
-		if DEBUG { log.Println("dispatch to", t.Dump()) }
+		// logger.Debug("[server] dispatch to " + t.Dump())
 		return
 	}
 
@@ -50,16 +50,16 @@ func (srv *Server) get_tunnel(remote *net.UDPAddr, buf []byte) (t *Tunnel, err e
 		return nil, errors.New("packet to unknow tunnel, " + remotekey)
 	}
 
-	t = NewTunnel(remote)
+	t = NewTunnel(remote, fmt.Sprintf("%d_srv", remote.Port))
 	t.c_send = srv.c_send
 	t.onclose = func () {
-		if WARNING { log.Println("close tunnel", remotekey) }
+		logger.Info("[server] close tunnel " + remotekey)
 		delete(srv.dispatcher, remotekey)
 	}
 
 	srv.dispatcher[remotekey] = t
 	go srv.handler(NewTunnelConn(t))
-	if WARNING { log.Println("create tunnel", remotekey) }
+	logger.Info("[server] create tunnel " + remotekey)
 	return
 }	
 
@@ -82,19 +82,17 @@ func UdpServer (addr string, handler func (net.Conn) (error)) (err error) {
 		buf = make([]byte, 2048)
 		n, remote, err = conn.ReadFromUDP(buf)
 		if err != nil {
-			log.Println(err.Error())
+			logger.Err("[server] " + err.Error())
 			continue
 		}
-
-		if DEBUG { log.Println("server recv", remote, buf[:n]) }
 
 		t, err = srv.get_tunnel(remote, buf[:n])
 		if err != nil {
-			if WARNING { log.Println(err.Error()) }
+			logger.Err("[server] " + err.Error())
 			continue
 		}
 		if t == nil {
-			log.Println("unknow problem leadto channel 0")
+			logger.Err("[server] unknow problem leadto channel 0")
 			continue
 		}
 

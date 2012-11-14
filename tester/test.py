@@ -31,10 +31,10 @@ def main():
 
     def writest(ch):
         sys.stdout.write(
-            '%d/%d = %f, %d/%d = %f, %d/%d = %f%s' % (
-                counter[0], counter[3], float(counter[0])/float(counter[3]),
-                counter[1], counter[3], float(counter[1])/float(counter[3]),
-                counter[2], counter[3], float(counter[2])/float(counter[3]), ch))
+            '%d/%d/%d/%d = %f/%f/%f%s' % (
+                counter[0], counter[1], counter[2], counter[3],
+                float(counter[0])/float(counter[3]), float(counter[1])/float(counter[3]),
+                float(counter[2])/float(counter[3]), ch))
         
     def tester():
         counter[3] += 1
@@ -45,8 +45,8 @@ def main():
         except: counter[2] += 1
         writest('\r')
 
-    p = pool.Pool(64)
-    for i in xrange(5000): p.spawn(tester)
+    p = pool.Pool(50)
+    for i in xrange(500): p.spawn(tester)
     p.join()
     writest('\n')
 

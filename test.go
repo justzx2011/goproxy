@@ -1,20 +1,15 @@
 package main
 
 import (
-	// "bytes"
-	// "encoding/binary"
-	"log/syslog"
-	// "fmt"
+	"fmt"
+	"net"
 )
 
-const SYSLOGADDR = "localhost:4455"
-
-var logger *syslog.Writer
-
-func init () {
-	logger, _ = syslog.Dial("udp", SYSLOGADDR, syslog.LOG_DEBUG, "tunnel")
-}
-
 func main () {
-	logger.Debug("ok")
+	udpaddr, err := net.ResolveUDPAddr("udp", "localhost:8899")
+	if err != nil { return }
+	conn, err := net.DialUDP("udp", nil, udpaddr)
+	if err != nil { return }
+	localaddr := conn.LocalAddr()
+	fmt.Println(localaddr.String())
 }

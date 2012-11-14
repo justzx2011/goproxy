@@ -15,8 +15,6 @@ type Packet struct {
 	content []byte
 
 	t time.Time
-	timeout *time.Timer
-	resend_count int
 }
 
 func NewPacket(t *Tunnel, flag uint8, content []byte) (p *Packet) {

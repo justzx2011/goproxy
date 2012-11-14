@@ -8,9 +8,7 @@ import (
 )
 
 const (
-	DEBUG = false
-	WARNING = true
-	DROPFLAG = false
+	DROPFLAG = true
 	PACKETSIZE = 512
 	MAXRESEND = 5
 	RETRANS_SACKCOUNT = 2
@@ -70,7 +68,7 @@ func init () {
 	if len(SYSLOGADDR) > 0 {
 		logger, err = syslog.Dial("udp", SYSLOGADDR, syslog.LOG_DEBUG, "tunnel")
 		if err != nil {
-			log.Println(err.Error())
+			log.Fatal(err.Error())
 			logger = nil
 		}
 	}

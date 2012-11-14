@@ -1,14 +1,16 @@
 package tunnel
 
 import (
-	"log"
+	"fmt"
 	"math/rand"
 	"net"
+	"strings"
 )
 
 type Client struct {
 	t *Tunnel
 	conn *net.UDPConn
+	name string
 }
 
 func (c *Client) sender () {
@@ -20,7 +22,7 @@ func (c *Client) sender () {
 		db, ok = <- c.t.c_send
 		if !ok { break }
 		if DROPFLAG && rand.Intn(100) >= 85 {
-			log.Println("DEBUG: client drop packet")
+			logger.Debug(fmt.Sprintf("[%s] drop packet", c.name))
 			continue
 		}
 		_, err = c.conn.Write(db.buf)
@@ -28,7 +30,7 @@ func (c *Client) sender () {
 			break
 		}
 		if err != nil {
-			log.Println(err.Error())
+			logger.Err("[client] " + err.Error())
 			break
 		}
 	}
@@ -46,11 +48,10 @@ func (c *Client) recver () {
 			break
 		}
 		if err != nil {
-			log.Println(err.Error())
+			logger.Err(fmt.Sprintf("[client] %s", err.Error()))
 			break
 		}
 
-		if DEBUG { log.Println("client recv", buf[:n]) }
 		c.t.c_recv <- buf[:n]
 	}
 }
@@ -65,19 +66,20 @@ func DialTunnel(addr string) (tc net.Conn, err error) {
 	if err != nil { return }
 	localaddr := conn.LocalAddr()
 
-	t = NewTunnel(udpaddr)
+	name := fmt.Sprintf("%s_cli", strings.Split(localaddr.String(), ":")[1])
+	t = NewTunnel(udpaddr, name)
 	t.c_send = make(chan *DataBlock, 1)
 	t.onclose = func () {
-		if WARNING { log.Println("close tunnel", localaddr, addr) }
+		logger.Info(fmt.Sprintf("[client] close tunnel %s", localaddr))
 		conn.Close()
 	}
 
-	c := &Client{t, conn}
+	c := &Client{t, conn, name}
 	go c.sender()
 	go c.recver()
 
 	t.c_evin <- EV_CONNECT
 	<- t.c_evout
-	if WARNING { log.Println("create tunnel", localaddr, addr) }
+	logger.Info(fmt.Sprintf("[client] create tunnel %s", localaddr))
 	return NewTunnelConn(t), nil
 }

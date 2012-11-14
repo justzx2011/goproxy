@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strconv"
 	"time"
 )
 
 type Tunnel struct {
+	name string
 	remote *net.UDPAddr
 	status uint8
 
@@ -43,8 +43,9 @@ type Tunnel struct {
 	c_evout chan uint8
 }
 
-func NewTunnel(remote *net.UDPAddr) (t *Tunnel) {
+func NewTunnel(remote *net.UDPAddr, name string) (t *Tunnel) {
 	t = new(Tunnel)
+	t.name = name
 	t.remote = remote
 	t.status = CLOSED
 
@@ -86,7 +87,7 @@ func (t *Tunnel) main () {
 	var ev uint8
 
 	defer func () {
-		logger.Debug("tunnel main quit")
+		logger.Info(fmt.Sprintf("[%s] main quit", t.name))
 		t.status = CLOSED
 		for len(t.c_read) != 0 { <- t.c_read }
 		close(t.c_read)
@@ -101,35 +102,37 @@ QUIT:
 			if ev == EV_END { break QUIT }
 			err = t.on_event(ev)
 		case <- t.connest:
-			logger.Debug("timer connest")
+			logger.Debug(fmt.Sprintf("[%s] timer connest", t.name))
 			t.c_evin <- EV_END
 		case <- t.retrans:
-			logger.Debug("timer retrans")
+			logger.Debug(fmt.Sprintf("[%s] timer retrans", t.name))
 			err = t.on_retrans()
 		case <- t.delayack:
-			logger.Debug("timer delayack")
+			logger.Debug(fmt.Sprintf("[%s] timer delayack", t.name))
 			err = t.send(ACK, []byte{})
 		case <- t.keepalive:
-			logger.Debug("timer keepalive")
+			logger.Debug(fmt.Sprintf("[%s] timer keepalive", t.name))
 			t.c_evin <- EV_END
 		case <- t.finwait:
-			logger.Debug("timer finwait")
+			logger.Debug(fmt.Sprintf("[%s] timer finwait", t.name))
 			t.c_evin <- EV_END
 		case <- t.timewait:
-			logger.Debug("timer timewait")
+			logger.Debug(fmt.Sprintf("[%s] timer timewait", t.name))
 			t.c_evin <- EV_END
 		// case len(t.c_read) == 0 && buf = <- t.c_recv:
 		case buf = <- t.c_recv: err = t.on_data(buf)
 		// case len(t.c_send) == 0 && buf = <- t.c_write:
 		case buf = <- t.c_write: err = t.send(0, buf)
 		}
-		if err != nil { logger.Err(err.Error()) }
-		logger.Debug("loop end " + t.Dump())
+		if err != nil {
+			logger.Err(fmt.Sprintf("[%s] %s", t.name, err.Error()))
+		}
+		logger.Debug(fmt.Sprintf("[%s] loop end %s", t.name, t.Dump()))
 	}
 }
 
 func (t *Tunnel) on_event (ev uint8) (err error) {
-	if logger != nil { logger.Debug("on event " + strconv.Itoa(int(ev))) }
+	logger.Debug(fmt.Sprintf("[%s] on event %d", t.name, ev))
 	switch ev {
 	case EV_CONNECT:
 		if t.status != CLOSED {
@@ -154,7 +157,7 @@ func (t *Tunnel) on_data(buf []byte) (err error) {
 	pkt, err = Unpack(buf)
 	if err != nil { return }
 
-	if logger != nil { logger.Debug("recv packet " + pkt.Dump()) }
+	logger.Debug(fmt.Sprintf("[%s] recv packet %s", t.name, pkt.Dump()))	
 	t.keepalive = time.After(time.Duration(TM_KEEPALIVE) * time.Second)
 
 	if (pkt.flag & ACK) != 0 {
@@ -268,7 +271,7 @@ func (t *Tunnel) proc_fin (pkt *Packet) (err error) {
 func (t *Tunnel) proc_sack(pkt *Packet) (err error) {
 	var id int32
 	var sendbuf PacketQueue
-	logger.Warning("proc sack")
+	logger.Warning(fmt.Sprintf("[%s] proc sack", t.name))
 	buf := bytes.NewBuffer(pkt.content)
 
 	binary.Read(buf, binary.BigEndian, &id)
@@ -286,7 +289,7 @@ func (t *Tunnel) proc_sack(pkt *Packet) (err error) {
 
 	t.sack_count += 1
 	if t.sack_count > RETRANS_SACKCOUNT {
-		logger.Warning("sack resend")
+		logger.Warning(fmt.Sprintf("[%s] sack resend", t.name))
 		t.resend(id, true)
 		t.sack_count = 0
 	}
@@ -321,7 +324,7 @@ func (t *Tunnel) ack_recv(pkt *Packet) (err error) {
 }
 
 func (t *Tunnel) send_sack() (err error) {
-	logger.Warning("send sack")
+	logger.Warning(fmt.Sprintf("[%s] send sack", t.name))
 	buf := bytes.NewBuffer([]byte{})
 	for i, p := range t.recvbuf {
 		if i > 0x7f { break }
@@ -343,14 +346,12 @@ func (t *Tunnel) send(flag uint8, content []byte) (err error) {
 
 	t.recvack = t.recvseq
 	if t.delayack != nil { t.delayack = nil }
-
-	if logger != nil { logger.Debug("send out " + t.Dump()) }
 	return
 }
 
 func (t *Tunnel) send_packet(pkt *Packet, retrans bool) (err error) {
 	var buf []byte
-	if logger != nil { logger.Debug("send in " + pkt.Dump()) }
+	logger.Debug(fmt.Sprintf("[%s] send in %s", t.name, pkt.Dump()))
 
 	buf, err = pkt.Pack()
 	if err != nil { return }
@@ -383,7 +384,7 @@ func (t *Tunnel) resend (stopid int32, stop bool) (err error) {
 func (t *Tunnel) on_retrans () (err error) {
 	t.retrans_count += 1
 	if t.retrans_count > MAXRESEND {
-		logger.Err("send packet more then maxretrans times")
+		logger.Info(fmt.Sprintf("[%s] send packet more then maxretrans times", t.name))
 		t.c_evin <- EV_END
 		return
 	}
