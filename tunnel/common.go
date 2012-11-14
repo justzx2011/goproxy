@@ -3,6 +3,8 @@ package tunnel
 import (
 	"bytes"
 	"net"
+	"log"
+	"log/syslog"
 )
 
 const (
@@ -12,6 +14,7 @@ const (
 	PACKETSIZE = 512
 	MAXRESEND = 5
 	RETRANS_SACKCOUNT = 2
+	SYSLOGADDR = "localhost:4455"
 )
 
 const (
@@ -58,6 +61,19 @@ func DumpStatus(st uint8) string {
 	case LASTACK: return "LASTACK"
 	}
 	return "unknown"
+}
+
+var logger *syslog.Writer
+
+func init () {
+	var err error
+	if len(SYSLOGADDR) > 0 {
+		logger, err = syslog.Dial("udp", SYSLOGADDR, syslog.LOG_DEBUG, "tunnel")
+		if err != nil {
+			log.Println(err.Error())
+			logger = nil
+		}
+	}
 }
 
 type PacketQueue []*Packet

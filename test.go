@@ -1,18 +1,20 @@
 package main
 
 import (
-	"bytes"
-	"encoding/binary"
-	"fmt"
+	// "bytes"
+	// "encoding/binary"
+	"log/syslog"
+	// "fmt"
 )
 
+const SYSLOGADDR = "localhost:4455"
+
+var logger *syslog.Writer
+
+func init () {
+	logger, _ = syslog.Dial("udp", SYSLOGADDR, syslog.LOG_DEBUG, "tunnel")
+}
+
 func main () {
-	// fmt.Println(uint8(0xff), ^uint8(0x00))
-	var id uint16
-	buf := bytes.NewBuffer([]byte{0x00, 0x01})
-	binary.Read(buf, binary.BigEndian, &id)
-	fmt.Println(id)
-	err := binary.Read(buf, binary.BigEndian, &id)
-	fmt.Println(err)
-	fmt.Println(id)
+	logger.Debug("ok")
 }

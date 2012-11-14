@@ -19,7 +19,7 @@ clean:
 	rm -f $(TARGET)
 
 goproxy: goproxy.go
-	go build $^
+	go build -o $@ $^
 	chmod 755 $@
 
 ### Makefile ends here
