@@ -7,6 +7,8 @@ import (
 
 const (
 	DEBUG = false
+	WARNING = true
+	DROPFLAG = false
 	PACKETSIZE = 512
 	MAXRESEND = 5
 	RETRANS_SACKCOUNT = 2
@@ -25,8 +27,15 @@ const (
 	SYN = uint8(0x04)
 	ACK = uint8(0x02)
 	FIN = uint8(0x01)
-	END = uint8(0xff)
 )
+
+const (
+	EV_CONNECT = 1
+	EV_CONNECTED = 2
+	EV_CLOSE = 3
+	EV_CLOSED = 4
+	EV_END = 5
+)	
 
 const (
 	CLOSED = 0

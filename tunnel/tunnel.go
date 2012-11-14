@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"strconv"
 	"time"
 )
 
@@ -43,12 +44,12 @@ type Tunnel struct {
 	c_evout chan uint8
 }
 
-func NewTunnel(remote *net.UDPAddr) (t *Tunnel, err error) {
+func NewTunnel(remote *net.UDPAddr) (t *Tunnel) {
 	t = new(Tunnel)
 	t.remote = remote
 	t.status = CLOSED
 
-	t.c_recv = make(chan []byte, 10)
+	t.c_recv = make(chan []byte, 1)
 
 	t.sendseq = 0
 	t.recvseq = 0
@@ -64,7 +65,7 @@ func NewTunnel(remote *net.UDPAddr) (t *Tunnel, err error) {
 
 	t.c_read = make(chan []byte, 1)
 	t.c_write = make(chan []byte, 1)
-	t.c_evin = make(chan uint8)
+	t.c_evin = make(chan uint8, 1)
 	t.c_evout = make(chan uint8)
 
 	go t.main()
@@ -84,23 +85,44 @@ func (t *Tunnel) main () {
 	var err error
 	var buf []byte
 	var ev uint8
-	var loop bool = true
+
+	defer func () {
+		if DEBUG { log.Println("tunnel main quit") }
+		t.status = CLOSED
+		for len(t.c_read) != 0 {
+			<- t.c_read
+		}
+		close(t.c_read)
+		if t.onclose != nil { t.onclose() }
+	}()
 
 QUIT:
-	for loop {
+	for {
 		select {
 		case ev = <- t.c_evin:
-			if ev == END { break QUIT }
+			if ev == EV_END { break QUIT }
 			err = t.on_event(ev)
-		case <- t.connest: err = t.Close()
-		case <- t.retrans: err = t.on_retrans()
+		case <- t.connest:
+			if DEBUG { log.Println("timer connest") }
+			t.c_evin <- EV_END
+		case <- t.retrans:
+			if DEBUG { log.Println("timer retrans") }
+			err = t.on_retrans()
 		case <- t.delayack:
+			if DEBUG { log.Println("timer delayack") }
 			err = t.send(ACK, []byte{})
-			t.delayack = nil
-		case <- t.keepalive: err = t.Close()
-		case <- t.finwait: err = t.Close()
-		case <- t.timewait: err = t.Close()
+		case <- t.keepalive:
+			if DEBUG { log.Println("timer keepalive") }
+			t.c_evin <- EV_END
+		case <- t.finwait:
+			if DEBUG { log.Println("timer finwait") }
+			t.c_evin <- EV_END
+		case <- t.timewait:
+			if DEBUG { log.Println("timer timewait") }
+			t.c_evin <- EV_END
+		// case len(t.c_read) == 0 && buf = <- t.c_recv:
 		case buf = <- t.c_recv: err = t.on_data(buf)
+		// case len(t.c_send) == 0 && buf = <- t.c_write:
 		case buf = <- t.c_write: err = t.send(0, buf)
 		}
 		if err != nil { log.Println(err.Error()) }
@@ -108,15 +130,16 @@ QUIT:
 }
 
 func (t *Tunnel) on_event (ev uint8) (err error) {
+	if DEBUG { log.Println("on event " + strconv.Itoa(int(ev))) }
 	switch ev {
-	case SYN:
+	case EV_CONNECT:
 		if t.status != CLOSED {
 			return errors.New("somebody try to connect, " + t.Dump())
 		}
 		t.connest = time.After(time.Duration(TM_CONNEST) * time.Second)
 		t.status = SYNSENT
 		return t.send(SYN, []byte{})
-	case FIN:
+	case EV_CLOSE:
 		if t.status != EST { return }
 		t.finwait = time.After(time.Duration(TM_FINWAIT) * time.Millisecond)
 		t.status = FINWAIT
@@ -129,7 +152,6 @@ func (t *Tunnel) on_data(buf []byte) (err error) {
 	var pkt *Packet
 	var p *Packet
 
-	if DEBUG { log.Println("recv in", t.Dump()) }
 	pkt, err = Unpack(buf)
 	if err != nil { return }
 
@@ -167,19 +189,14 @@ func (t *Tunnel) on_data(buf []byte) (err error) {
 }
 
 func (t *Tunnel) proc_packet(pkt *Packet) (err error) {
+	if t.status == SYNRCVD { t.status = EST }
 	if (pkt.flag & ACK) != 0 {
-		switch t.status {
-		case SYNRCVD:
-			t.status = EST
-		case LASTACK:
-			t.status = CLOSED
-			t.Close()
-		}
+		if t.status == LASTACK { t.c_evin <- EV_END }
 	}
 
 	if (pkt.flag & SYN) != 0 { return t.proc_syn(pkt) }
 	if (pkt.flag & FIN) != 0 { return t.proc_fin(pkt) }
-	if pkt.flag == SACK { return t.proc_sack(pkt) }
+	if (pkt.flag & SACK) != 0 { return t.proc_sack(pkt) }
 
 	if len(pkt.content) > 0 {
 		t.recvseq += int32(len(pkt.content))
@@ -201,7 +218,7 @@ func (t *Tunnel) proc_syn (pkt *Packet) (err error) {
 		t.status = EST
 		err = t.send(ACK, []byte{})
 		if err != nil { return }
-		t.c_evout <- SYN
+		t.c_evout <- EV_CONNECTED
 	}else{
 		if t.status != CLOSED {
 			return errors.New("status wrong, SYN, " + t.Dump())
@@ -224,7 +241,7 @@ func (t *Tunnel) proc_fin (pkt *Packet) (err error) {
 		if err != nil { return }
 
 		t.timewait = time.After(2 * time.Duration(TM_MSL) * time.Millisecond)
-		t.c_evout <- FIN
+		t.c_evout <- EV_CLOSED
 	}else{
 		switch t.status {
 		case EST:
@@ -249,6 +266,7 @@ func (t *Tunnel) proc_fin (pkt *Packet) (err error) {
 func (t *Tunnel) proc_sack(pkt *Packet) (err error) {
 	var id int32
 	var sendbuf PacketQueue
+	if WARNING { log.Println("proc sack") }
 	buf := bytes.NewBuffer(pkt.content)
 
 	binary.Read(buf, binary.BigEndian, &id)
@@ -266,7 +284,9 @@ func (t *Tunnel) proc_sack(pkt *Packet) (err error) {
 
 	t.sack_count += 1
 	if t.sack_count > RETRANS_SACKCOUNT {
+		if WARNING { log.Println("sack resend") }
 		t.resend(id, true)
+		t.sack_count = 0
 	}
 
 	return
@@ -276,7 +296,7 @@ func (t *Tunnel) ack_recv(pkt *Packet) (err error) {
 	var ti time.Time = time.Now()
 	var p *Packet
 
-	for len(t.sendbuf) != 0 && t.sendbuf[0].seq >= pkt.ack {
+	for len(t.sendbuf) != 0 && t.sendbuf[0].seq < pkt.ack {
 		p = t.sendbuf.Pop()
 
 		delta := int32(ti.Sub(p.t).Nanoseconds() / 1000) - int32(t.rtt)
@@ -299,6 +319,7 @@ func (t *Tunnel) ack_recv(pkt *Packet) (err error) {
 }
 
 func (t *Tunnel) send_sack() (err error) {
+	if WARNING { log.Println("send sack") }
 	buf := bytes.NewBuffer([]byte{})
 	for i, p := range t.recvbuf {
 		if i > 0x7f { break }
@@ -313,7 +334,7 @@ func (t *Tunnel) send(flag uint8, content []byte) (err error) {
 	if err != nil { return }
 
 	switch {
-	case flag == SACK:
+	case (flag & SACK) != 0:
 	case len(content) > 0: t.sendseq += int32(len(content))
 	case flag != ACK: t.sendseq += 1
 	}
@@ -333,7 +354,7 @@ func (t *Tunnel) send_packet(pkt *Packet, retrans bool) (err error) {
 	if DEBUG { log.Println("send", t.remote, buf) }
 
 	t.c_send <- &DataBlock{t.remote, buf}
-	if pkt.flag == SACK { return }
+	if (pkt.flag & SACK) != 0 { return }
 	if pkt.flag == ACK && len(pkt.content) == 0 { return }
 	if !retrans { return }
 
@@ -361,7 +382,7 @@ func (t *Tunnel) on_retrans () (err error) {
 	t.retrans_count += 1
 	if t.retrans_count > MAXRESEND {
 		log.Println("send packet more then maxretrans times")
-		t.Close()
+		t.c_evin <- EV_END
 		return
 	}
 
@@ -370,13 +391,5 @@ func (t *Tunnel) on_retrans () (err error) {
 
 	d := (t.rtt + t.rttvar << 2) * (1 << t.retrans_count)
 	t.retrans = time.After(time.Duration(d) * time.Microsecond)
-	return
-}
-
-func (t *Tunnel) Close () (err error) {
-	if t.onclose != nil { t.onclose() }
-	t.c_evin <- END
-	close(t.c_read)
-	close(t.c_send)
 	return
 }

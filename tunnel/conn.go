@@ -2,6 +2,7 @@ package tunnel
 
 import (
 	"bytes"
+	"io"
 	"net"
 	"time"
 )
@@ -20,23 +21,27 @@ func NewTunnelConn(t *Tunnel) (tc *TunnelConn) {
 
 func (tc TunnelConn) Read(b []byte) (n int, err error) {
 	if tc.buf.Len() == 0 {
-		_, err = tc.buf.Write(<- tc.t.c_read)
+		bi, ok := <- tc.t.c_read
+		if !ok { return 0, io.EOF }
+		_, err = tc.buf.Write(bi)
 		if err != nil { return }
 	}
 	return tc.buf.Read(b)
 }
 
 func (tc TunnelConn) Write(b []byte) (n int, err error) {
+	n = 0
 	err = SplitBytes(b, PACKETSIZE, func (bi []byte) (err error){
+		if tc.t.status == CLOSED { return io.EOF }
 		tc.t.c_write <- bi
+		n += len(bi)
 		return 
 	})
-	n = len(b)
 	return
 }
 
 func (tc TunnelConn) Close() (err error) {
-	tc.t.c_evin <- FIN
+	tc.t.c_evin <- EV_CLOSE
 	<- tc.t.c_evout
 	return
 }

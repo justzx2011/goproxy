@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	// "math/rand"
 	"net"
 	"os"
 	"./socks"
@@ -39,6 +40,8 @@ func init() {
 			listenaddr = ":8899"
 		}
 	}
+
+	// rand.Seed(1)
 }
 
 var f func (net.Conn) (net.Conn, error) = nil

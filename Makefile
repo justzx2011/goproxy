@@ -6,7 +6,7 @@
 ## X-URL: 
 TARGET=goproxy
 
-all: build
+all: clean build
 
 build: $(TARGET)
 
