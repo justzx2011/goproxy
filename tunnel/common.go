@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	DROPFLAG = true
+	DROPFLAG = false
 	PACKETSIZE = 512
 	WINDOWSIZE = 16 * 1024
 	MAXRESEND = 5
@@ -23,28 +23,31 @@ const (
 )
 
 const (
-	SACK = uint8(0x10)
+	SACK = uint8(0x80)
+	RST = uint8(0x08)
 	SYN = uint8(0x04)
 	ACK = uint8(0x02)
 	FIN = uint8(0x01)
 )
 
 const (
-	EV_CONNECT = 1
-	EV_CONNECTED = 2
-	EV_CLOSE = 3
-	EV_CLOSED = 4
-	EV_END = 5
-)	
+	EV_CONNECT = iota
+	EV_CONNECTED
+	EV_CLOSE
+	EV_CLOSED
+	EV_END
+)
 
 const (
-	CLOSED = 0
-	SYNRCVD = 1
-	SYNSENT = 2
-	EST = 3
-	FINWAIT = 4
-	TIMEWAIT = 5
-	LASTACK = 6
+	CLOSED = iota
+	SYNRCVD
+	SYNSENT
+	EST
+	FINWAIT1
+	FINWAIT2
+	CLOSING
+	TIMEWAIT
+	LASTACK
 )
 
 func DumpStatus(st uint8) string {
@@ -53,16 +56,19 @@ func DumpStatus(st uint8) string {
 	case SYNRCVD: return "SYNRCVD"
 	case SYNSENT: return "SYNSENT"
 	case EST: return "EST"
-	case FINWAIT: return "FINWAIT"
+	case FINWAIT1: return "FINWAIT1"
+	case FINWAIT2: return "FINWAIT2"
+	case CLOSING: return "CLOSING"
 	case TIMEWAIT: return "TIMEWAIT"
 	case LASTACK: return "LASTACK"
 	}
-	return "unknown"
+	return "UNKNOWN"
 }
 
 func DumpFlag(flag uint8) (r string) {
 	var rs []string
 	if (flag & SACK) != 0 { rs = append(rs, "SACK") }
+	if (flag & RST) != 0 { rs = append(rs, "RST") }
 	if (flag & SYN) != 0 { rs = append(rs, "SYN") }
 	if (flag & ACK) != 0 { rs = append(rs, "ACK") }
 	if (flag & FIN) != 0 { rs = append(rs, "FIN") }

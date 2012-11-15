@@ -29,7 +29,7 @@ func NewPacket(t *Tunnel, flag uint8, content []byte) (p *Packet) {
 }
 
 func (p Packet) Dump() string {
-	return fmt.Sprintf("flag: %d, seq: %d, ack: %d, wnd: %d, len: %d",
+	return fmt.Sprintf("flag: %s, seq: %d, ack: %d, wnd: %d, len: %d",
 		DumpFlag(p.flag), p.seq, p.ack, p.window, len(p.content))
 }
 
