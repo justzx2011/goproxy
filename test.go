@@ -1,15 +1,16 @@
 package main
 
 import (
-	"fmt"
-	"net"
+	// "fmt"
+	"log"
+	// "net"
+	"./sutils"
 )
 
 func main () {
-	udpaddr, err := net.ResolveUDPAddr("udp", "localhost:8899")
-	if err != nil { return }
-	conn, err := net.DialUDP("udp", nil, udpaddr)
-	if err != nil { return }
-	localaddr := conn.LocalAddr()
-	fmt.Println(localaddr.String())
+	lv, err := sutils.GetLevelByName("DEBUG")
+	err = sutils.SetupLog(":4455", lv)
+	if err != nil { log.Println(err) }
+	t := sutils.NewLogger("test")
+	t.Info("OK", 1, 2)
 }

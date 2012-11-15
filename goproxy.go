@@ -26,12 +26,16 @@ func Usage() {
 }
 
 func init() {
+	var logfile string
+	var loglevel string
 	// flag.Usage = Usage
 	flag.StringVar(&runmode, "mode", "", "udpcli/udpsrv/client/server mode")
 	flag.StringVar(&cipher, "cipher", "aes", "aes des tripledes rc4")
 	flag.StringVar(&keyfile, "keyfile", "", "key and iv file")
 	flag.StringVar(&listenaddr, "listen", "", "listen address")
 	flag.StringVar(&passfile, "passfile", "", "password file")
+	flag.StringVar(&logfile, "logfile", "", "log file")
+	flag.StringVar(&loglevel, "loglevel", "", "log level")
 	flag.Parse()
 
 	if len(listenaddr) == 0 {
@@ -40,6 +44,11 @@ func init() {
 			listenaddr = ":8899"
 		}
 	}
+
+	lv, err := sutils.GetLevelByName(loglevel)
+	if err != nil { log.Fatal(err.Error()) }
+	err = sutils.SetupLog(logfile, lv)
+	if err != nil { log.Fatal(err.Error()) }
 
 	// rand.Seed(1)
 }
