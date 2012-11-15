@@ -86,7 +86,7 @@ func main () {
 		header := strings.Split(ss[2], " ")
 		timestamp := header[0]
 		hostname := header[1]
-		procid := header[2]
+		// procid := header[2]
 		msgid := header[3]
 		key := hostname + "_" + msgid
 

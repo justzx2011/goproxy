@@ -3,11 +3,13 @@ package tunnel
 import (
 	"bytes"
 	"net"
+	"strings"
 )
 
 const (
 	DROPFLAG = true
 	PACKETSIZE = 512
+	WINDOWSIZE = 16 * 1024
 	MAXRESEND = 5
 	RETRANS_SACKCOUNT = 2
 )
@@ -56,6 +58,15 @@ func DumpStatus(st uint8) string {
 	case LASTACK: return "LASTACK"
 	}
 	return "unknown"
+}
+
+func DumpFlag(flag uint8) (r string) {
+	var rs []string
+	if (flag & SACK) != 0 { rs = append(rs, "SACK") }
+	if (flag & SYN) != 0 { rs = append(rs, "SYN") }
+	if (flag & ACK) != 0 { rs = append(rs, "ACK") }
+	if (flag & FIN) != 0 { rs = append(rs, "FIN") }
+	return strings.Join(rs, "|")
 }
 
 type PacketQueue []*Packet

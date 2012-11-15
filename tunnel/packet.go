@@ -10,6 +10,7 @@ import (
 
 type Packet struct {
 	flag uint8
+	window uint32 // 24bits in fact
 	seq int32
 	ack int32
 	content []byte
@@ -20,6 +21,7 @@ type Packet struct {
 func NewPacket(t *Tunnel, flag uint8, content []byte) (p *Packet) {
 	p = new(Packet)
 	p.flag = flag
+	p.window = t.recvwnd
 	p.seq = t.sendseq
 	p.ack = t.recvseq
 	p.content = content
@@ -27,15 +29,15 @@ func NewPacket(t *Tunnel, flag uint8, content []byte) (p *Packet) {
 }
 
 func (p Packet) Dump() string {
-	buf := bytes.NewBuffer([]byte{})
-	fmt.Fprintf(buf, "flag: %d, seq: %d, ack: %d, len:%d",
-		p.flag, p.seq, p.ack, len(p.content))
-	return buf.String()
+	return fmt.Sprintf("flag: %d, seq: %d, ack: %d, wnd: %d, len: %d",
+		DumpFlag(p.flag), p.seq, p.ack, p.window, len(p.content))
 }
 
 func (p Packet) Pack() (b []byte, err error) {
+	var h uint32
 	var buf bytes.Buffer
-	err = binary.Write(&buf, binary.BigEndian, &p.flag)
+	h = (uint32(p.flag) << 24) + (p.window & 0xffffff)
+	err = binary.Write(&buf, binary.BigEndian, &h)
 	if err != nil { return }
 	err = binary.Write(&buf, binary.BigEndian, &p.seq)
 	if err != nil { return }
@@ -43,22 +45,20 @@ func (p Packet) Pack() (b []byte, err error) {
 	if err != nil { return }
 	err = binary.Write(&buf, binary.BigEndian, uint16(len(p.content)))
 	if err != nil { return }
-
-	var n int
-	b = make([]byte, 11)
-	n, err = buf.Read(b)
-	if n != 11 { return nil, errors.New("header pack wrong") }
-	b = append(b, p.content...)
-	return
+	_, err = buf.Write(p.content)
+	return buf.Bytes(), err
 }
 
 func Unpack(b []byte) (p *Packet, err error) {
+	var h uint32
 	var n uint16
 	p = new(Packet)
 	buf := bytes.NewBuffer(b)
 
-	err = binary.Read(buf, binary.BigEndian, &p.flag)
+	err = binary.Read(buf, binary.BigEndian, &h)
 	if err != nil { return }
+	p.flag = uint8(h >> 24)
+	p.window = h & 0xffffff
 	err = binary.Read(buf, binary.BigEndian, &p.seq)
 	if err != nil { return }
 	err = binary.Read(buf, binary.BigEndian, &p.ack)

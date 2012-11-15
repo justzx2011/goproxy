@@ -13,25 +13,32 @@ import (
 )
 
 type Tunnel struct {
+	// status
 	logger *sutils.Logger
 	remote *net.UDPAddr
 	status uint8
 
+	// communicate with conn loop
 	c_recv chan []byte
 	c_send chan *DataBlock
+	onclose func ()
 
+	// basic status
 	sendseq int32
 	recvseq int32
 	recvack int32
 	sendbuf PacketQueue
 	recvbuf PacketQueue
+	sendwnd uint32
+	recvwnd uint32
 
+	// counter
 	rtt uint32
 	rttvar uint32
 	sack_count uint
 	retrans_count uint
-	onclose func ()
 
+	// timer
 	connest <-chan time.Time
 	retrans <-chan time.Time
 	delayack <-chan time.Time
@@ -39,8 +46,10 @@ type Tunnel struct {
 	finwait <-chan time.Time
 	timewait <-chan time.Time
 
+	// communicate with conn
 	c_read chan []byte
 	c_write chan []byte
+	c_pause chan []byte
 	c_evin chan uint8
 	c_evout chan uint8
 }
@@ -58,6 +67,8 @@ func NewTunnel(remote *net.UDPAddr, name string) (t *Tunnel) {
 	t.recvack = 0
 	t.sendbuf = make(PacketQueue, 0)
 	t.recvbuf = make(PacketQueue, 0)
+	t.sendwnd = 0
+	t.recvwnd = WINDOWSIZE
 
 	t.rtt = 200000
 	t.rttvar = 200000
@@ -67,6 +78,7 @@ func NewTunnel(remote *net.UDPAddr, name string) (t *Tunnel) {
 
 	t.c_read = make(chan []byte, 1)
 	t.c_write = make(chan []byte, 1)
+	t.c_pause = nil
 	t.c_evin = make(chan uint8, 1)
 	t.c_evout = make(chan uint8, 1)
 
@@ -89,8 +101,8 @@ func (t *Tunnel) main () {
 	defer func () {
 		t.logger.Info("main quit")
 		t.status = CLOSED
-		for len(t.c_read) != 0 { <- t.c_read }
 		close(t.c_read)
+		for len(t.c_write) != 0 { <- t.c_write }
 		if len(t.c_evout) == 0 { t.c_evout <- EV_CLOSED }
 		if t.onclose != nil { t.onclose() }
 	}()
@@ -100,6 +112,7 @@ QUIT:
 		select {
 		case ev = <- t.c_evin:
 			if ev == EV_END { break QUIT }
+			t.logger.Debug("on event", ev)
 			err = t.on_event(ev)
 		case <- t.connest:
 			t.logger.Debug("timer connest")
@@ -119,9 +132,7 @@ QUIT:
 		case <- t.timewait:
 			t.logger.Debug("timer timewait")
 			t.c_evin <- EV_END
-		// case len(t.c_read) == 0 && buf = <- t.c_recv:
 		case buf = <- t.c_recv: err = t.on_data(buf)
-		// case len(t.c_send) == 0 && buf = <- t.c_write:
 		case buf = <- t.c_write: err = t.send(0, buf)
 		}
 		if err != nil { t.logger.Err(err) }
@@ -130,10 +141,10 @@ QUIT:
 }
 
 func (t *Tunnel) on_event (ev uint8) (err error) {
-	t.logger.Debug("on event", ev)
 	switch ev {
 	case EV_CONNECT:
 		if t.status != CLOSED {
+			t.c_evin <- EV_END
 			return errors.New("somebody try to connect, " + t.Dump())
 		}
 		t.connest = time.After(time.Duration(TM_CONNEST) * time.Second)
@@ -158,11 +169,8 @@ func (t *Tunnel) on_data(buf []byte) (err error) {
 	t.logger.Debug("recv packet", pkt.Dump())
 	t.keepalive = time.After(time.Duration(TM_KEEPALIVE) * time.Second)
 
-	if (pkt.flag & ACK) != 0 {
-		err = t.ack_recv(pkt)
-		if err != nil { return }
-	}
-	if pkt.flag == ACK { t.sack_count = 0 }
+	err = t.proc_now(pkt)
+	if err != nil { return err }
 
 	switch{
 	case (pkt.seq - t.recvseq) < 0: return 
@@ -187,7 +195,16 @@ func (t *Tunnel) on_data(buf []byte) (err error) {
 	return
 }
 
-func (t *Tunnel) proc_packet(pkt *Packet) (err error) {
+func (t *Tunnel) proc_now (pkt *Packet) (err error) {
+	if (pkt.flag & ACK) != 0 {
+		err = t.ack_recv(pkt)
+		if err != nil { return }
+	}
+	if pkt.flag == ACK { t.sack_count = 0 }
+	return
+}
+
+func (t *Tunnel) proc_packet (pkt *Packet) (err error) {
 	if t.status == SYNRCVD { t.status = EST }
 	if (pkt.flag & ACK) != 0 {
 		if t.status == LASTACK { t.c_evin <- EV_END }
