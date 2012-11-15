@@ -20,12 +20,12 @@ clean:
 
 goproxy: goproxy.go
 	go build -o $@ $^
-	chmod 755 $@
 	strip $@
+	chmod 755 $@
 
 logger: logger.go
 	go build -o $@ $^
-	chmod 755 $@
 	strip $@
+	chmod 755 $@
 
 ### Makefile ends here

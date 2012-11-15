@@ -7,7 +7,9 @@ import (
 	"net"
 	"os"
 	"regexp"
+	"strings"
 	"strconv"
+	"./sutils"
 )
 
 var lvname = map[int]string {
@@ -17,11 +19,21 @@ var lvname = map[int]string {
 }
 
 var listenaddr string
+var loglv int
 
 func init() {
+	var err error
+	var loglevel string
+
 	flag.StringVar(&listenaddr, "listen", ":4455", "syslog listen addr")
+	flag.StringVar(&loglevel, "loglevel", "DEBUG", "log level")
 	flag.Parse()
+
+	loglv, err = sutils.GetLevelByName(loglevel)
+	if err != nil { log.Fatal(err.Error()) }
 }
+
+var recv_counter int
 
 func udpserver (addr string, c chan []byte) {
 	udpaddr, err := net.ResolveUDPAddr("udp", addr)
@@ -36,9 +48,9 @@ func udpserver (addr string, c chan []byte) {
 	for {
 		buf = make([]byte, 2048)
 		n, _, err = conn.ReadFromUDP(buf)
-
 		if err != nil { return }
 		c <- buf[:n]
+		recv_counter += 1
 	}
 }
 
@@ -49,35 +61,48 @@ func main () {
 	go udpserver(listenaddr, c)
 
 	var buf []byte
-	re_data, err := regexp.Compile("\\<(\\d+)\\>(.*) \\[(.*)\\] (.*)\n")
+	re_data, err := regexp.Compile("\\<(\\d+)\\>(.*?)\\[\\]: (.*)\n")
 	if err != nil {
 		log.Fatal("regex failed")
 	}
 
 	var ok bool
-	var fn string
+	var pri string
 	var fo *os.File
+	counter := 0
 	fmap := make(map[string]*os.File)
 
 	for {
 		buf = <- c
 		ss := re_data.FindStringSubmatch(string(buf))
 
-		f, err := strconv.Atoi(ss[1])
+		h, err := strconv.Atoi(ss[1])
 		if err != nil { continue }
-		fn, ok = lvname[f]
+
+		if (h % 8) > loglv { continue }
+		pri, ok = lvname[h%8]
 		if !ok { continue }
 
-		fo, ok = fmap[ss[3]]
+		header := strings.Split(ss[2], " ")
+		timestamp := header[0]
+		hostname := header[1]
+		procid := header[2]
+		msgid := header[3]
+		key := hostname + "_" + msgid
+
+		fo, ok = fmap[key]
 		if !ok {
-			fo, err = os.Create(ss[3]+".log")
+			fo, err = os.Create(key+".log")
 			if err != nil {
-				log.Println("open file failed,", ss[3]+".log")
+				log.Println("open file failed,", key+".log")
 				continue
 			}
-			fmap[ss[3]] = fo
+			fmap[key] = fo
 		}
 
-		fo.WriteString(fmt.Sprintf("%s [%s] %s\n", ss[2], fn, ss[4]))
+		fo.WriteString(fmt.Sprintf("%s [%s]: %s\n", timestamp, pri, ss[3]))
+
+		counter += 1
+		fmt.Printf("processed %d/%d...\r", counter, recv_counter)
 	}
 }

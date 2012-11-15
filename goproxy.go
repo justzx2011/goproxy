@@ -42,7 +42,7 @@ func init() {
 
 	lv, err := sutils.GetLevelByName(loglevel)
 	if err != nil { log.Fatal(err.Error()) }
-	err = sutils.SetupLog(logfile, lv)
+	err = sutils.SetupLog(logfile, lv, 16)
 	if err != nil { log.Fatal(err.Error()) }
 
 	// rand.Seed(1)
