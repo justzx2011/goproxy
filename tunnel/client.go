@@ -2,10 +2,16 @@ package tunnel
 
 import (
 	"fmt"
-	"math/rand"
 	"net"
 	"strings"
+	"../sutils"
 )
+
+var logcli *sutils.Logger
+
+func init () {
+	logcli = sutils.NewLogger("client")
+}
 
 type Client struct {
 	t *Tunnel
@@ -21,16 +27,12 @@ func (c *Client) sender () {
 	for {
 		db, ok = <- c.t.c_send
 		if !ok { break }
-		if DROPFLAG && rand.Intn(100) >= 85 {
-			logger.Debug(fmt.Sprintf("[%s] drop packet", c.name))
-			continue
-		}
 		_, err = c.conn.Write(db.buf)
 		if _, ok := err.(*net.OpError); ok {
 			break
 		}
 		if err != nil {
-			logger.Err("[client] " + err.Error())
+			logcli.Err(err)
 			break
 		}
 	}
@@ -48,7 +50,7 @@ func (c *Client) recver () {
 			break
 		}
 		if err != nil {
-			logger.Err(fmt.Sprintf("[client] %s", err.Error()))
+			logcli.Err(err)
 			break
 		}
 
@@ -70,7 +72,7 @@ func DialTunnel(addr string) (tc net.Conn, err error) {
 	t = NewTunnel(udpaddr, name)
 	t.c_send = make(chan *DataBlock, 1)
 	t.onclose = func () {
-		logger.Info(fmt.Sprintf("[client] close tunnel %s", localaddr))
+		logcli.Info("close tunnel", localaddr)
 		conn.Close()
 	}
 
@@ -80,6 +82,6 @@ func DialTunnel(addr string) (tc net.Conn, err error) {
 
 	t.c_evin <- EV_CONNECT
 	<- t.c_evout
-	logger.Info(fmt.Sprintf("[client] create tunnel %s", localaddr))
+	logcli.Info("create tunnel", localaddr)
 	return NewTunnelConn(t), nil
 }

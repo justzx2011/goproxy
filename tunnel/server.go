@@ -3,9 +3,15 @@ package tunnel
 import (
 	"errors"
 	"fmt"
-	"math/rand"
 	"net"
+	"../sutils"
 )
+
+var logsrv *sutils.Logger
+
+func init () {
+	logsrv = sutils.NewLogger("server")
+}
 
 type Server struct {
 	conn *net.UDPConn
@@ -28,12 +34,8 @@ func (srv *Server) sender () {
 	var db *DataBlock
 	for {
 		db, _ = <- srv.c_send
-		if DROPFLAG && rand.Intn(100) >= 85 {
-			logger.Debug(fmt.Sprintf("[%d_srv] drop packet", db.remote.Port))
-			continue
-		}
 		_, err = srv.conn.WriteToUDP(db.buf, db.remote)
-		if err != nil { logger.Err("[server] " + err.Error()) }
+		if err != nil { logsrv.Err(err) }
 	}
 }
 
@@ -53,13 +55,13 @@ func (srv *Server) get_tunnel(remote *net.UDPAddr, buf []byte) (t *Tunnel, err e
 	t = NewTunnel(remote, fmt.Sprintf("%d_srv", remote.Port))
 	t.c_send = srv.c_send
 	t.onclose = func () {
-		logger.Info("[server] close tunnel " + remotekey)
+		logsrv.Info("close tunnel", remotekey)
 		delete(srv.dispatcher, remotekey)
 	}
 
 	srv.dispatcher[remotekey] = t
 	go srv.handler(NewTunnelConn(t))
-	logger.Info("[server] create tunnel " + remotekey)
+	logsrv.Info("create tunnel", remotekey)
 	return
 }	
 
@@ -82,17 +84,17 @@ func UdpServer (addr string, handler func (net.Conn) (error)) (err error) {
 		buf = make([]byte, 2048)
 		n, remote, err = conn.ReadFromUDP(buf)
 		if err != nil {
-			logger.Err("[server] " + err.Error())
+			logsrv.Err(err)
 			continue
 		}
 
 		t, err = srv.get_tunnel(remote, buf[:n])
 		if err != nil {
-			logger.Err("[server] " + err.Error())
+			logsrv.Err(err)
 			continue
 		}
 		if t == nil {
-			logger.Err("[server] unknow problem leadto channel 0")
+			logsrv.Err("unknow problem leadto channel 0")
 			continue
 		}
 

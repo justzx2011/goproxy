@@ -4,7 +4,7 @@
 ## Version: $Id: Makefile,v 0.0 2012/11/02 06:18:14 shell Exp $
 ## Keywords: 
 ## X-URL: 
-TARGET=goproxy
+TARGET=goproxy logger
 
 all: clean build
 
@@ -21,5 +21,11 @@ clean:
 goproxy: goproxy.go
 	go build -o $@ $^
 	chmod 755 $@
+	strip $@
+
+logger: logger.go
+	go build -o $@ $^
+	chmod 755 $@
+	strip $@
 
 ### Makefile ends here

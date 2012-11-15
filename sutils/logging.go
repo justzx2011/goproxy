@@ -118,3 +118,43 @@ func (l *Logger) Warning(a ...interface{}) {
 func NewLogger(name string) (logger *Logger) {
 	return &Logger{name}
 }
+
+func Alert(a ...interface{}) {
+	if loglv <= LOG_ALERT { return }
+	WriteLog("root", LOG_ALERT, a)
+}
+
+func Crit(a ...interface{}) {
+	if loglv <= LOG_CRIT { return }
+	WriteLog("root", LOG_CRIT, a)
+}
+
+func Debug(a ...interface{}) {
+	if loglv <= LOG_DEBUG { return }
+	WriteLog("root", LOG_DEBUG, a)
+}
+
+func Emerg(a ...interface{}) {
+	if loglv <= LOG_EMERG { return }
+	WriteLog("root", LOG_EMERG, a)
+}
+
+func Err(a ...interface{}) {
+	if loglv <= LOG_ERR { return }
+	WriteLog("root", LOG_ERR, a)
+}
+
+func Info(a ...interface{}) {
+	if loglv <= LOG_INFO { return }
+	WriteLog("root", LOG_INFO, a)
+}
+
+func Notice(a ...interface{}) {
+	if loglv <= LOG_NOTICE { return }
+	WriteLog("root", LOG_NOTICE, a)
+}
+
+func Warning(a ...interface{}) {
+	if loglv <= LOG_WARNING { return }
+	WriteLog("root", LOG_WARNING, a)
+}

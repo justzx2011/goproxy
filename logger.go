@@ -45,11 +45,7 @@ func udpserver (addr string, c chan []byte) {
 func main () {
 	var err error
 
-	// if len(flag.Args()) < 1 {
-	// 	log.Fatal("args not enough")
-	// }		
-
-	c := make(chan []byte, 10000)
+	c := make(chan []byte, 1000000)
 	go udpserver(listenaddr, c)
 
 	var buf []byte

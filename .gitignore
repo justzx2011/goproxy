@@ -22,5 +22,8 @@ _testmain.go
 *.exe
 
 goproxy
+logger
+test
 *.key
 *.log
+*.pyc

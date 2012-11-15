@@ -28,22 +28,17 @@ func Usage() {
 func init() {
 	var logfile string
 	var loglevel string
+
 	// flag.Usage = Usage
 	flag.StringVar(&runmode, "mode", "", "udpcli/udpsrv/client/server mode")
 	flag.StringVar(&cipher, "cipher", "aes", "aes des tripledes rc4")
 	flag.StringVar(&keyfile, "keyfile", "", "key and iv file")
-	flag.StringVar(&listenaddr, "listen", "", "listen address")
+	flag.StringVar(&listenaddr, "listen", ":8899", "listen address")
 	flag.StringVar(&passfile, "passfile", "", "password file")
-	flag.StringVar(&logfile, "logfile", "", "log file")
-	flag.StringVar(&loglevel, "loglevel", "", "log level")
-	flag.Parse()
 
-	if len(listenaddr) == 0 {
-		listenaddr = ":1080"
-		if runmode == "server" && len(keyfile) != 0 {
-			listenaddr = ":8899"
-		}
-	}
+	flag.StringVar(&logfile, "logfile", "", "log file")
+	flag.StringVar(&loglevel, "loglevel", "INFO", "log level")
+	flag.Parse()
 
 	lv, err := sutils.GetLevelByName(loglevel)
 	if err != nil { log.Fatal(err.Error()) }
@@ -188,12 +183,16 @@ func main() {
 
 	switch runmode {
 	case "udpcli":
+		sutils.Info("udp client mode")
 		run_udpcli()
 	case "client":
+		sutils.Info("client mode")
 		run_client()
 	case "udpsrv":
+		sutils.Info("udp server mode")
 		run_udpsrv()
 	case "server":
+		sutils.Info("server mode")
 		run_server()
 	default:
 		Usage()
