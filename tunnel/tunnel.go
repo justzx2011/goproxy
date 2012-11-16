@@ -102,7 +102,7 @@ func (t *Tunnel) main () {
 		t.logger.Info("quit")
 		t.status = CLOSED
 		close(t.c_read)
-		for len(t.c_write) != 0 { <- t.c_write }
+		for len(t.c_wrbak) != 0 { <- t.c_wrbak }
 		if len(t.c_evout) == 0 { t.c_evout <- EV_CLOSED }
 		if t.onclose != nil { t.onclose() }
 	}()
@@ -158,6 +158,7 @@ func (t *Tunnel) on_event (ev uint8) (err error) {
 		if t.status != EST { return }
 		t.finwait = time.After(time.Duration(TM_FINWAIT) * time.Millisecond)
 		t.status = FINWAIT1
+		t.c_write = nil
 		return t.send(FIN, []byte{})
 	}
 	return errors.New("unknown event")
@@ -216,7 +217,7 @@ func (t *Tunnel) proc_now (pkt *Packet) (next bool, err error) {
 
 func (t *Tunnel) proc_packet (pkt *Packet) (err error) {
 	if t.status == SYNRCVD { t.status = EST }
-	if pkt.flag == ACK {
+	if pkt.flag == ack {
 		err = t.proc_ack(pkt)
 		if err != nil { return }
 	}
@@ -226,42 +227,50 @@ func (t *Tunnel) proc_packet (pkt *Packet) (err error) {
 		t.c_write = t.c_wrbak
 	}
 
-	if (pkt.flag & SYN) != 0 { return t.proc_syn(pkt) }
-	if (pkt.flag & FIN) != 0 { return t.proc_fin(pkt) }
-	if (pkt.flag & SACK) != 0 { return t.proc_sack(pkt) }
-
-	if len(pkt.content) > 0 {
+	flag := pkt.flag & ^SACK & ^ACK
+	switch {
+	case flag == 0:
+	case len(pkt.content) > 0:
 		t.recvseq += int32(len(pkt.content))
 		t.c_read <- pkt.content
-	}else if pkt.flag != ACK {
-		t.recvseq += 1
+	default: t.recvseq += 1
 	}
 
+	switch flag {
+	case SYN: return t.proc_syn(pkt)
+	case FIN: return t.proc_fin(pkt)
+	case (pkt.flag & SACK) != 0:
+		return t.proc_sack(pkt)
+	}
 	return
 }
 
 func (t *Tunnel) proc_ack (pkt *Packet) (err error) {
 	switch t.status {
 	case FINWAIT1:
-		t.status = FINWAIT2
-		t.send(FIN, []byte{})
+		if len(t.sendbuf) == 0 {
+			t.status = FINWAIT2
+			t.send(FIN, []byte{})
+		}
 	case CLOSING:
-		err = t.to_timewait()
-		if err != nil { return }
+		if len(t.sendbuf) == 0 {
+			err = t.to_timewait()
+		}
 	case LASTACK:
-		t.status = CLOSED
-		t.c_evin <- EV_END
+		if len(t.sendbuf) == 0 {
+			t.status = CLOSED
+			t.c_evin <- EV_END
+		}
 	}
 	return
 }
 
 func (t *Tunnel) proc_syn (pkt *Packet) (err error) {
-	t.recvseq += 1
 	if (pkt.flag & ACK) != 0 {
 		if t.status != SYNSENT {
 			t.send(RST, []byte{})
 			t.c_evin <- EV_END
-			return errors.New("status wrong, SYN ACK, " + t.Dump())
+			return errors.New("SYN ACK status wrong, " + t.Dump())
 		}
 		t.connest = nil
 		t.status = EST
@@ -270,55 +279,41 @@ func (t *Tunnel) proc_syn (pkt *Packet) (err error) {
 		t.c_evout <- EV_CONNECTED
 	}else{
 		switch t.status {
-		case TIMEWAIT:
-			t.c_evin <- EV_END
+		case TIMEWAIT: t.c_evin <- EV_END
 		case CLOSED:
 			t.status = SYNRCVD
 			err = t.send(SYN | ACK, []byte{})
 		default:
 			t.send(RST, []byte{})
 			t.c_evin <- EV_END
-			return errors.New("status wrong, SYN, " + t.Dump())
+			return errors.New("SYN status wrong, " + t.Dump())
 		}
 	}
 	return
 }
 
 func (t *Tunnel) proc_fin (pkt *Packet) (err error) {
-	t.recvseq += 1
 	switch t.status {
-	case TIMEWAIT:
-		t.send(ACK, []byte{})
+	case TIMEWAIT: t.send(ACK, []byte{})
 	case EST:
 		t.status = LASTACK
 		err = t.send(FIN | ACK, []byte{})
 		return
-	}
-	// if (pkt.flag & ACK) != 0 {
-	if len(t.sendbuf) == 0 {
-		switch t.status {
-		case FINWAIT1:
+	case FINWAIT1:
+		if len(t.sendbuf) == 0 {
 			err = t.to_timewait()
 			if err != nil { return }
-		// default:
-		// 	t.send(RST, []byte{})
-		// 	t.c_evin <- EV_END
-		// 	return errors.New("status wrong, FIN ACK, " + t.Dump())
-		}
-	}else{
-		switch t.status {
-		case TIMEWAIT: t.send(ACK, []byte{})
-		case FINWAIT1:
+		}else{
 			t.status = CLOSING
 			err = t.send(ACK, []byte{})
-		case FINWAIT2:
-			err = t.to_timewait()
-			if err != nil { return }
-		// default:
-		// 	t.send(RST, []byte{})
-		// 	t.c_evin <- EV_END
-		// 	return errors.New("status wrong, FIN, " + t.Dump())
 		}
+	case FINWAIT2:
+		err = t.to_timewait()
+		if err != nil { return }
+	default:
+		t.send(RST, []byte{})
+		t.c_evin <- EV_END
+		return errors.New("FIN status wrong," + t.Dump())
 	}
 	return
 }
@@ -399,6 +394,10 @@ func (t *Tunnel) send_sack() (err error) {
 }
 
 func (t *Tunnel) send(flag uint8, content []byte) (err error) {
+	if t.status != EST && flag == 0{
+		return errors.New("can't send data," + t.Dump())
+	}
+
 	if t.recvack != t.recvseq { flag |= ACK }
 	err = t.send_packet(NewPacket(t, flag, content), true)
 	if err != nil { return }
