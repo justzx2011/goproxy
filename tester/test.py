@@ -4,7 +4,7 @@
 @date: 2012-11-14
 @author: shell.xu
 '''
-import sys, gevent
+import sys, gevent, logging
 from urlparse import urlparse
 from gevent import socket, pool
 import http, socks
@@ -25,7 +25,7 @@ def download(uri):
 
 
 def main():
-    url = 'http://www.douban.com/'
+    url = 'http://localhost/'
     d = download(url)
     counter = [0, 0, 0, 0]
 
@@ -42,7 +42,9 @@ def main():
             e = download(url)
             if d == e: counter[0] += 1
             else: counter[1] += 1
-        except: counter[2] += 1
+        except Exception, e:
+            counter[2] += 1
+            logging.exception(e)
         writest('\r')
 
     p = pool.Pool(50)

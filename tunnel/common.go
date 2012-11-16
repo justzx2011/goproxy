@@ -72,7 +72,9 @@ func DumpFlag(flag uint8) (r string) {
 	if (flag & SYN) != 0 { rs = append(rs, "SYN") }
 	if (flag & ACK) != 0 { rs = append(rs, "ACK") }
 	if (flag & FIN) != 0 { rs = append(rs, "FIN") }
-	return strings.Join(rs, "|")
+	r = strings.Join(rs, "|")
+	if r == "" { return "NON" }
+	return
 }
 
 type PacketQueue []*Packet

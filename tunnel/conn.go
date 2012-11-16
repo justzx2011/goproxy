@@ -21,10 +21,14 @@ func NewTunnelConn(t *Tunnel) (tc *TunnelConn) {
 
 func (tc TunnelConn) Read(b []byte) (n int, err error) {
 	if tc.buf.Len() == 0 {
-		bi, ok := <- tc.t.c_read
-		if !ok { return 0, io.EOF }
-		_, err = tc.buf.Write(bi)
-		if err != nil { return }
+		select {
+		case bi, ok := <- tc.t.c_read:
+			if !ok { return 0, io.EOF }
+			_, err = tc.buf.Write(bi)
+			if err != nil { return }
+		case ev := <- tc.t.c_close:
+			if ev == EV_CLOSED { return 0, io.EOF }
+		}
 	}
 	return tc.buf.Read(b)
 }
@@ -33,16 +37,20 @@ func (tc TunnelConn) Write(b []byte) (n int, err error) {
 	n = 0
 	err = SplitBytes(b, PACKETSIZE, func (bi []byte) (err error){
 		if tc.t.status == CLOSED { return io.EOF }
-		tc.t.c_write <- bi
-		n += len(bi)
+		select {
+		case tc.t.c_write <- bi:
+			n += len(bi)
+		case ev := <- tc.t.c_close:
+			if ev == EV_CLOSED { return io.EOF }
+		}
 		return 
 	})
 	return
 }
 
 func (tc TunnelConn) Close() (err error) {
-	tc.t.c_evin <- EV_CLOSE
-	<- tc.t.c_evout
+	if tc.t.status == EST { tc.t.c_event <- EV_CLOSE }
+	<- tc.t.c_close
 	return
 }
 

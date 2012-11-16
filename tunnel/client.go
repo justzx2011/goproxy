@@ -80,8 +80,8 @@ func DialTunnel(addr string) (tc net.Conn, err error) {
 	go c.sender()
 	go c.recver()
 
-	t.c_evin <- EV_CONNECT
-	<- t.c_evout
+	t.c_event <- EV_CONNECT
+	<- t.c_connect
 	logcli.Info("create tunnel", localaddr)
 	return NewTunnelConn(t), nil
 }
