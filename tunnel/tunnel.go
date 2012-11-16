@@ -217,7 +217,7 @@ func (t *Tunnel) proc_now (pkt *Packet) (next bool, err error) {
 
 func (t *Tunnel) proc_packet (pkt *Packet) (err error) {
 	if t.status == SYNRCVD { t.status = EST }
-	if pkt.flag == ack {
+	if pkt.flag == ACK {
 		err = t.proc_ack(pkt)
 		if err != nil { return }
 	}
@@ -236,9 +236,9 @@ func (t *Tunnel) proc_packet (pkt *Packet) (err error) {
 	default: t.recvseq += 1
 	}
 
-	switch flag {
-	case SYN: return t.proc_syn(pkt)
-	case FIN: return t.proc_fin(pkt)
+	switch {
+	case flag == SYN: return t.proc_syn(pkt)
+	case flag == FIN: return t.proc_fin(pkt)
 	case (pkt.flag & SACK) != 0:
 		return t.proc_sack(pkt)
 	}
