@@ -19,6 +19,7 @@ var keyfile string
 var listenaddr string
 var passfile string
 var runmode string
+var logger *sutils.Logger
 
 func Usage() {
 	fmt.Printf("Usage of %s:\n", os.Args[0])
@@ -44,6 +45,8 @@ func init() {
 	if err != nil { log.Fatal(err.Error()) }
 	err = sutils.SetupLog(logfile, lv, 16)
 	if err != nil { log.Fatal(err.Error()) }
+
+	logger = sutils.NewLogger("goproxy")
 
 	// rand.Seed(1)
 }

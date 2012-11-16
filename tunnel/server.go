@@ -43,10 +43,7 @@ func (srv *Server) get_tunnel(remote *net.UDPAddr, buf []byte) (t *Tunnel, err e
 	var ok bool
 	remotekey := remote.String()
 	t, ok = srv.dispatcher[remotekey]
-	if ok {
-		// logger.Debug("[server] dispatch to " + t.Dump())
-		return
-	}
+	if ok { return }
 
 	if buf[0] != SYN {
 		return nil, errors.New("packet to unknow tunnel, " + remotekey)

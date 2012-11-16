@@ -1,7 +1,6 @@
 package sutils
 
 import (
-	"log"
 	"net"
 )
 
@@ -16,7 +15,7 @@ func TcpServer(addr string, handler func (net.Conn) (error)) (err error) {
 		if err != nil { return }
 		go func () {
 			e := handler(conn)
-			if e != nil { log.Println(e.Error()) }
+			if e != nil { Err(e) }
 		} ()
 	}
 	return
