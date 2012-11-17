@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -9,8 +11,12 @@ import (
 	"regexp"
 	"strings"
 	"strconv"
+	"time"
 	"./sutils"
 )
+
+// const blocksize = 65536
+const BLOCKSIZE = 512
 
 var lvname = map[int]string {
 	0: "EMERG", 1: "ALERT", 2: "CRIT",
@@ -54,55 +60,106 @@ func udpserver (addr string, c chan []byte) {
 	}
 }
 
+type FlushBlock struct {
+	key string
+	buf bytes.Buffer
+}
+
+func log_writer (c chan *FlushBlock) {
+	var fb * FlushBlock
+	for {
+		fb = <- c
+		f, err := os.OpenFile(fb.key+".log", os.O_RDWR | os.O_APPEND | os.O_CREATE, 0644)
+		if err != nil {
+			log.Println(err.Error())
+		}
+		fb.buf.WriteTo(f)
+		f.Close()
+	}
+	return
+}
+
+var re_data *regexp.Regexp
+func log_analyzer (b []byte) (key string, l string, err error) {
+	ss := re_data.FindStringSubmatch(string(b))
+
+	h, err := strconv.Atoi(ss[1])
+	if err != nil { return }
+
+	if (h % 8) > loglv { return }
+	pri, ok := lvname[h%8]
+	if !ok {
+		err = errors.New("lvname not found")
+		return
+	}
+
+	header := strings.Split(ss[2], " ")
+	timestamp := header[0]
+	hostname := header[1]
+	// procid := header[2]
+	msgid := header[3]
+	msg := ss[3]
+
+	// key = hostname + "_" + procid
+	// l = fmt.Sprintf("%s %s[%s]: %s\n", timestamp, msgid, pri, msg)
+	key = hostname + "_" + msgid
+	l = fmt.Sprintf("%s [%s]: %s\n", timestamp, pri, msg)
+	return
+}
+
 func main () {
 	var err error
 
 	c := make(chan []byte, 1000000)
 	go udpserver(listenaddr, c)
+	cw := make(chan *FlushBlock, 1000000)
+	go log_writer(cw)
 
-	var buf []byte
-	re_data, err := regexp.Compile("\\<(\\d+)\\>(.*?)\\[\\]: (.*)\n")
+	var b []byte
+	re_data, err = regexp.Compile("\\<(\\d+)\\>(.*?)\\[\\]: (.*)\n")
 	if err != nil {
 		log.Fatal("regex failed")
 	}
 
 	var ok bool
-	var pri string
-	var fo *os.File
+	var fb *FlushBlock
+	var time_flush  <-chan time.Time
+	fmap := make(map[string]*FlushBlock)
 	counter := 0
-	fmap := make(map[string]*os.File)
+	recv_counter := 0
 
 	for {
-		buf = <- c
-		ss := re_data.FindStringSubmatch(string(buf))
-
-		h, err := strconv.Atoi(ss[1])
-		if err != nil { continue }
-
-		if (h % 8) > loglv { continue }
-		pri, ok = lvname[h%8]
-		if !ok { continue }
-
-		header := strings.Split(ss[2], " ")
-		timestamp := header[0]
-		hostname := header[1]
-		// procid := header[2]
-		msgid := header[3]
-		key := hostname + "_" + msgid
-
-		fo, ok = fmap[key]
-		if !ok {
-			fo, err = os.Create(key+".log")
+		select {
+		case b = <- c:
+			recv_counter += 1
+			key, l, err := log_analyzer(b)
 			if err != nil {
-				log.Println("open file failed,", key+".log")
+				log.Println(err.Error())
 				continue
 			}
-			fmap[key] = fo
+			if len(key) == 0 { continue }
+
+			fb, ok = fmap[key]
+			if !ok {
+				fb = new(FlushBlock)
+				fb.key = key
+				fmap[key] = fb
+			}
+
+			fb.buf.WriteString(l)
+
+			if fb.buf.Len() > BLOCKSIZE {
+				delete(fmap, key)
+				cw <- fb
+			}
+
+			counter += 1
+			if (recv_counter % 10) == 0 { fmt.Printf("%d/%d.\r", counter, recv_counter) }
+			time_flush = time.After(time.Duration(3) * time.Second)
+		case <- time_flush:
+			fmt.Println("flush out\t\t\t\n")
+			for _, v := range fmap { cw <- v }
+			fmap = make(map[string]*FlushBlock)
 		}
-
-		fo.WriteString(fmt.Sprintf("%s [%s]: %s\n", timestamp, pri, ss[3]))
-
-		counter += 1
-		fmt.Printf("processed %d/%d...\r", counter, recv_counter)
-	}
+	}		
 }

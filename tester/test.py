@@ -25,7 +25,7 @@ def download(uri):
 
 
 def main():
-    url = 'http://localhost/'
+    url = 'http://www.facebook.com/'
     d = download(url)
     counter = [0, 0, 0, 0]
 
@@ -42,13 +42,11 @@ def main():
             e = download(url)
             if d == e: counter[0] += 1
             else: counter[1] += 1
-        except Exception, e:
-            counter[2] += 1
-            logging.exception(e)
+        except Exception, e: counter[2] += 1
         writest('\r')
 
     p = pool.Pool(50)
-    for i in xrange(500): p.spawn(tester)
+    for i in xrange(1000): p.spawn(tester)
     p.join()
     writest('\n')
 

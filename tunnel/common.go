@@ -8,8 +8,10 @@ import (
 
 const (
 	DROPFLAG = false
-	PACKETSIZE = 512
-	WINDOWSIZE = 16 * 1024
+	SMSS = 1024 // Sender Maximum Segment Size
+	WINDOWSIZE = 65536
+	READBUFSIZE = 100
+	RESTARTACK = 3*16*1024
 	MAXRESEND = 5
 	RETRANS_SACKCOUNT = 2
 )
@@ -35,6 +37,7 @@ const (
 	EV_CONNECTED
 	EV_CLOSE
 	EV_CLOSED
+	EV_READ
 	EV_END
 )
 
@@ -107,4 +110,24 @@ func SplitBytes(b []byte, size int, f func ([]byte) (error)) (err error) {
 		if err != nil { return }
 	}
 	return
+}
+
+func min(a, b int) int {
+	if a < b { return a }
+	return b
+}
+
+func max(a, b int) int {
+	if a > b { return a }
+	return b
+}
+
+func max32(a, b int32) int32 {
+	if a > b { return a }
+	return b
+}
+
+func abs(a int32) int32 {
+	if a < 0 { return -a }
+	return a
 }

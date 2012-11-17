@@ -10,7 +10,7 @@ import (
 
 type Packet struct {
 	flag uint8
-	window uint32 // 24bits in fact
+	window uint16
 	seq int32
 	ack int32
 	content []byte
@@ -21,7 +21,9 @@ type Packet struct {
 func NewPacket(t *Tunnel, flag uint8, content []byte) (p *Packet) {
 	p = new(Packet)
 	p.flag = flag
-	p.window = t.recvwnd
+	if WINDOWSIZE > t.readlen {
+		p.window = uint16(WINDOWSIZE - t.readlen)
+	}else{ p.window = 0 }
 	p.seq = t.sendseq
 	p.ack = t.recvseq
 	p.content = content
@@ -34,10 +36,10 @@ func (p Packet) Dump() string {
 }
 
 func (p Packet) Pack() (b []byte, err error) {
-	var h uint32
 	var buf bytes.Buffer
-	h = (uint32(p.flag) << 24) + (p.window & 0xffffff)
-	err = binary.Write(&buf, binary.BigEndian, &h)
+	err = binary.Write(&buf, binary.BigEndian, &p.flag)
+	if err != nil { return }
+	err = binary.Write(&buf, binary.BigEndian, &p.window)
 	if err != nil { return }
 	err = binary.Write(&buf, binary.BigEndian, &p.seq)
 	if err != nil { return }
@@ -50,15 +52,14 @@ func (p Packet) Pack() (b []byte, err error) {
 }
 
 func Unpack(b []byte) (p *Packet, err error) {
-	var h uint32
 	var n uint16
 	p = new(Packet)
 	buf := bytes.NewBuffer(b)
 
-	err = binary.Read(buf, binary.BigEndian, &h)
+	err = binary.Read(buf, binary.BigEndian, &p.flag)
 	if err != nil { return }
-	p.flag = uint8(h >> 24)
-	p.window = h & 0xffffff
+	err = binary.Read(buf, binary.BigEndian, &p.window)
+	if err != nil { return }
 	err = binary.Read(buf, binary.BigEndian, &p.seq)
 	if err != nil { return }
 	err = binary.Read(buf, binary.BigEndian, &p.ack)

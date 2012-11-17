@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"net"
+	"sync/atomic"
 	"time"
 )
 
@@ -22,6 +23,9 @@ func NewTunnelConn(t *Tunnel) (tc *TunnelConn) {
 func (tc TunnelConn) Read(b []byte) (n int, err error) {
 	if tc.buf.Len() == 0 {
 		select {
+		case <- tc.t.c_close:
+			tc.t.logger.Debug("read event EOF")
+			return 0, io.EOF
 		case bi, ok := <- tc.t.c_read:
 			if !ok {
 				tc.t.logger.Debug("read EOF")
@@ -29,9 +33,10 @@ func (tc TunnelConn) Read(b []byte) (n int, err error) {
 			}
 			_, err = tc.buf.Write(bi)
 			if err != nil { return }
-		case <- tc.t.c_close:
-			tc.t.logger.Debug("read event EOF")
-			return 0, io.EOF
+			read_event := tc.t.readlen > RESTARTACK
+			atomic.AddInt32(&tc.t.readlen, -int32(len(bi)))
+			read_event = read_event && (tc.t.readlen < RESTARTACK)
+			if read_event { tc.t.c_event <- EV_READ }
 		}
 	}
 	return tc.buf.Read(b)
@@ -39,17 +44,16 @@ func (tc TunnelConn) Read(b []byte) (n int, err error) {
 
 func (tc TunnelConn) Write(b []byte) (n int, err error) {
 	n = 0
-	err = SplitBytes(b, PACKETSIZE, func (bi []byte) (err error){
+	err = SplitBytes(b, SMSS, func (bi []byte) (err error){
 		if tc.t.status == CLOSED {
 			tc.t.logger.Debug("write status EOF")
 			return io.EOF
 		}
 		select {
-		case tc.t.c_write <- bi:
-			n += len(bi)
 		case <- tc.t.c_close:
 			tc.t.logger.Debug("write event EOF")
 			return io.EOF
+		case tc.t.c_write <- bi: n += len(bi)
 		}
 		return 
 	})
@@ -57,6 +61,7 @@ func (tc TunnelConn) Write(b []byte) (n int, err error) {
 }
 
 func (tc TunnelConn) Close() (err error) {
+	if tc.t.status == CLOSED { return }
 	tc.t.logger.Debug("closing")
 	if tc.t.status == EST { tc.t.c_event <- EV_CLOSE }
 	<- tc.t.c_close

@@ -24,21 +24,16 @@ func (t *Tunnel) send (flag uint8, content []byte) (err error) {
 	}
 
 	if t.recvack != t.recvseq { flag |= ACK }
-	err = t.send_packet(NewPacket(t, flag, content), true)
+	retrans := (flag & SACK) == 0 && (flag != ACK || len(content) != 0)
+	err = t.send_packet(NewPacket(t, flag, content), retrans)
 	if err != nil { return }
-
-	if int(t.sendwnd) < len(content) {
-		t.sendwnd = 0
-	}else{ t.sendwnd -= uint32(len(content)) }
-	if t.sendwnd == 0 {
-		t.c_write = nil
-	}
 
 	switch {
 	case (flag & SACK) != 0:
 	case len(content) > 0: t.sendseq += int32(len(content))
 	case flag != ACK: t.sendseq += 1
 	}
+	t.check_windows_block()
 
 	t.recvack = t.recvseq
 	if t.delayack != nil { t.delayack = nil }
@@ -57,8 +52,6 @@ func (t *Tunnel) send_packet(pkt *Packet, retrans bool) (err error) {
 	}else{
 		t.c_send <- &DataBlock{t.remote, buf}
 	}
-	if (pkt.flag & SACK) != 0 { return }
-	if pkt.flag == ACK && len(pkt.content) == 0 { return }
 	if !retrans { return }
 
 	pkt.t = time.Now()
@@ -93,7 +86,20 @@ func (t *Tunnel) on_retrans () (err error) {
 	err = t.resend(0, false)
 	if err != nil { return }
 
+	inairlen := int32(0)
+	if len(t.sendbuf) > 0 { inairlen = t.sendseq - t.sendbuf[0].seq }
+	t.ssthresh = max32(inairlen/2, 2*SMSS)
+
 	d := (t.rtt + t.rttvar << 2) * (1 << t.retrans_count)
 	t.retrans = time.After(time.Duration(d) * time.Microsecond)
 	return
+}
+
+func (t *Tunnel) check_windows_block () {
+	inairlen := int32(0)
+	if len(t.sendbuf) > 0 { inairlen = t.sendseq - t.sendbuf[0].seq }
+	switch {
+	case (inairlen >= t.sendwnd) || (inairlen >= t.cwnd): t.c_write = nil
+	case t.c_write == nil: t.c_write = t.c_wrbak // when inairlen < pkt.window
+	}
 }

@@ -8,6 +8,8 @@ import (
 	"../sutils"
 )
 
+// TODO: 持续定时器
+
 type Tunnel struct {
 	// status
 	logger *sutils.Logger
@@ -25,12 +27,13 @@ type Tunnel struct {
 	recvack int32
 	sendbuf PacketQueue
 	recvbuf PacketQueue
-	sendwnd uint32
-	recvwnd uint32
+	sendwnd int32
 
 	// counter
 	rtt uint32
 	rttvar uint32
+	cwnd int32
+	ssthresh int32
 	sack_count uint
 	retrans_count uint
 
@@ -44,6 +47,7 @@ type Tunnel struct {
 
 	// communicate with conn
 	c_read chan []byte
+	readlen int32
 	c_write chan []byte
 	c_wrbak chan []byte
 	c_event chan uint8
@@ -65,15 +69,17 @@ func NewTunnel(remote *net.UDPAddr, name string) (t *Tunnel) {
 	t.sendbuf = make(PacketQueue, 0)
 	t.recvbuf = make(PacketQueue, 0)
 	t.sendwnd = 0
-	t.recvwnd = WINDOWSIZE
 
 	t.rtt = 200000
 	t.rttvar = 200000
+	t.cwnd = int32(min(4*SMSS, max(2*SMSS, 4380)))
+	t.ssthresh = WINDOWSIZE
 	t.sack_count = 0
 	t.retrans_count = 0
 	t.keepalive = time.After(time.Duration(TM_KEEPALIVE) * time.Second)
 
-	t.c_read = make(chan []byte, 64 * 1024)
+	t.c_read = make(chan []byte, READBUFSIZE)
+	t.readlen = 0
 	t.c_write = make(chan []byte, 1)
 	t.c_wrbak = t.c_write
 	t.c_event = make(chan uint8, 1)
@@ -86,9 +92,9 @@ func NewTunnel(remote *net.UDPAddr, name string) (t *Tunnel) {
 
 func (t Tunnel) Dump() string {
 	return fmt.Sprintf(
-		"st: %s, sseq: %d, rseq: %d, sbuf: %d, rbuf: %d, read: %d, write: %d",
+		"st: %s, sseq: %d, rseq: %d, sbuf: %d, rbuf: %d, read: %d/%d, write: %d",
 		DumpStatus(t.status), t.sendseq, t.recvseq,
-		len(t.sendbuf), len(t.recvbuf), len(t.c_read), len(t.c_wrbak))
+		len(t.sendbuf), len(t.recvbuf), len(t.c_read), t.readlen, len(t.c_wrbak))
 }
 
 func (t *Tunnel) main () {
@@ -158,6 +164,8 @@ func (t *Tunnel) on_event (ev uint8) (err error) {
 		t.status = FINWAIT1
 		t.c_write = nil
 		return t.send(FIN, []byte{})
+	case EV_READ:
+		return t.send(ACK, []byte{})
 	}
 	return errors.New("unknown event")
 }

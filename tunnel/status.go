@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"sync/atomic"
 	"time"
 )
 
@@ -22,6 +23,10 @@ func (t *Tunnel) proc_now (pkt *Packet) (next bool, err error) {
 		if err != nil { return }
 	}
 	if pkt.flag == ACK { t.sack_count = 0 }
+
+	t.cwnd = t.ssthresh
+	t.sendwnd = int32(pkt.window)
+	t.check_windows_block()
 	return true, nil
 }
 
@@ -32,16 +37,12 @@ func (t *Tunnel) proc_packet (pkt *Packet) (err error) {
 		if err != nil { return }
 	}
 
-	t.sendwnd = pkt.window
-	if t.sendwnd > 0 && t.c_write == nil {
-		t.c_write = t.c_wrbak
-	}
-
 	switch {
 	case (pkt.flag & SACK) != 0: return t.proc_sack(pkt)
 	case len(pkt.content) > 0:
 		t.recvseq += int32(len(pkt.content))
 		t.c_read <- pkt.content
+		atomic.AddInt32(&t.readlen, int32(len(pkt.content)))
 	case (pkt.flag != ACK): t.recvseq += 1
 	default: return
 	}
@@ -62,7 +63,7 @@ func (t *Tunnel) proc_ack (pkt *Packet) (err error) {
 		case CLOSING:
 			t.status = TIMEWAIT
 			t.finwait = nil
-			t.timewait = time.After(2*time.Duration(TM_MSL)*time.Millisecond)
+			t.timewait = time.After(2*TM_MSL*time.Millisecond)
 			for len(t.c_close) < 2 { t.c_close <- EV_CLOSED }
 		case LASTACK:
 			t.status = CLOSED
@@ -110,7 +111,7 @@ func (t *Tunnel) proc_fin (pkt *Packet) (err error) {
 			err = t.send(ACK, []byte{})
 			if err != nil { return }
 			t.finwait = nil
-			t.timewait = time.After(2*time.Duration(TM_MSL)*time.Millisecond)
+			t.timewait = time.After(2*TM_MSL*time.Millisecond)
 			for len(t.c_close) < 2 { t.c_close <- EV_CLOSED }
 		}else{
 			t.status = CLOSING
@@ -121,7 +122,7 @@ func (t *Tunnel) proc_fin (pkt *Packet) (err error) {
 		err = t.send(ACK, []byte{})
 		if err != nil { return }
 		t.finwait = nil
-		t.timewait = time.After(2*time.Duration(TM_MSL)*time.Millisecond)
+		t.timewait = time.After(2*TM_MSL*time.Millisecond)
 		for len(t.c_close) < 2 { t.c_close <- EV_CLOSED }
 	default:
 		t.send(RST, []byte{})
@@ -151,11 +152,23 @@ func (t *Tunnel) proc_sack(pkt *Packet) (err error) {
 	t.sendbuf = sendbuf
 
 	t.sack_count += 1
-	if t.sack_count > RETRANS_SACKCOUNT {
-		t.logger.Warning("sack resend")
+	switch {
+	case t.sack_count == RETRANS_SACKCOUNT:
+		t.logger.Warning("first sack resend")
+
+		inairlen := int32(0)
+		if len(t.sendbuf) > 0 { inairlen = t.sendseq - t.sendbuf[0].seq }
+		t.ssthresh = max32(inairlen/2, 2*SMSS)
+
 		t.resend(id, true)
-		t.sack_count = 0
+		t.cwnd = t.ssthresh + 3*SMSS
+	case t.sack_count > RETRANS_SACKCOUNT:
+		t.logger.Warning("sack resend")
+
+		t.resend(id, true)
+		t.cwnd += SMSS
 	}
+	t.check_windows_block()
 
 	return
 }
@@ -169,9 +182,14 @@ func (t *Tunnel) ack_recv(pkt *Packet) (err error) {
 
 		delta := int32(ti.Sub(p.t).Nanoseconds() / 1000) - int32(t.rtt)
 		t.rtt = uint32(int32(t.rtt) + delta >> 3)
-		if delta < 0 { delta = -delta }
-		t.rttvar = uint32(int32(t.rttvar) + (delta - int32(t.rttvar)) >> 2)
+		t.rttvar = uint32(int32(t.rttvar) + (abs(delta) - int32(t.rttvar)) >> 2)
 	}
+
+	if t.cwnd <= t.ssthresh {
+		t.cwnd += SMSS
+	}else if t.cwnd < SMSS*SMSS{
+		t.cwnd += SMSS*SMSS/t.cwnd
+	}else{ t.cwnd += 1 }
 
 	t.retrans_count = 0
 	if t.retrans != nil {
