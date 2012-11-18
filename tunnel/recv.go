@@ -8,13 +8,9 @@ import (
 	"time"
 )
 
-func (t *Tunnel) on_data (buf []byte) (err error) {
+func (t *Tunnel) on_packet (pkt *Packet) (err error) {
 	var next bool
-	var pkt *Packet
 	var p *Packet
-
-	pkt, err = Unpack(buf)
-	if err != nil { return }
 
 	t.logger.Debug("recv", pkt)
 	t.keepalive = time.After(time.Duration(TM_KEEPALIVE) * time.Second)
@@ -24,10 +20,13 @@ func (t *Tunnel) on_data (buf []byte) (err error) {
 	if !next { return }
 
 	switch{
-	case (pkt.seq - t.recvseq) < 0: return 
+	case (pkt.seq - t.recvseq) < 0:
+		put_packet(pkt)
+		return
 	case (pkt.seq - t.recvseq) == 0:
 		for p = pkt; ; {
-			err = t.proc_packet(p)
+			err = t.proc_current(p)
+			put_packet(p)
 			if err != nil { return }
 
 			if len(t.recvbuf) == 0 { break }
@@ -75,6 +74,8 @@ func (t *Tunnel) ack_recv(pkt *Packet) (err error) {
 		delta := int32(ti.Sub(p.t).Nanoseconds() / 1000) - int32(t.rtt)
 		t.rtt = uint32(int32(t.rtt) + delta >> 3)
 		t.rttvar = uint32(int32(t.rttvar) + (abs(delta) - int32(t.rttvar)) >> 2)
+
+		put_packet(p)
 	}
 
 	switch {
@@ -100,7 +101,7 @@ func (t *Tunnel) ack_recv(pkt *Packet) (err error) {
 	return
 }
 
-func (t *Tunnel) proc_packet (pkt *Packet) (err error) {
+func (t *Tunnel) proc_current (pkt *Packet) (err error) {
 	if t.status == SYNRCVD { t.status = EST }
 	if pkt.flag == ACK {
 		err = t.proc_ack(pkt)
@@ -135,7 +136,7 @@ func (t *Tunnel) proc_ack (pkt *Packet) (err error) {
 		switch t.status {
 		case FINWAIT1:
 			t.status = FINWAIT2
-			t.send(FIN, []byte{})
+			t.send(FIN, nil)
 		case CLOSING:
 			t.status = TIMEWAIT
 			t.finwait = nil
@@ -159,6 +160,7 @@ func (t *Tunnel) proc_sack(pkt *Packet) (err error) {
 	binary.Read(buf, binary.BigEndian, &id)
 	for _, p := range t.sendbuf {
 		if p.seq == id {
+			put_packet(p)
 			err = binary.Read(buf, binary.BigEndian, &id)
 			if err == io.EOF {
 				err = nil
@@ -194,39 +196,39 @@ func (t *Tunnel) proc_sack(pkt *Packet) (err error) {
 func (t *Tunnel) proc_syn (pkt *Packet) (err error) {
 	if (pkt.flag & ACK) != 0 {
 		if t.status != SYNSENT {
-			t.send(RST, []byte{})
+			t.send(RST, nil)
 			t.c_event <- EV_END
 			return fmt.Errorf("SYN ACK status wrong, %s", t)
 		}
 		t.connest = nil
 		t.status = EST
-		err = t.send(ACK, []byte{})
+		err = t.send(ACK, nil)
 		if err != nil { return }
 		t.c_connect <- EV_CONNECTED
 	}else{
 		if t.status != CLOSED {
-			t.send(RST, []byte{})
+			t.send(RST, nil)
 			t.c_event <- EV_END
 			return fmt.Errorf("SYN status wrong, %s", t)
 		}
 		t.status = SYNRCVD
-		err = t.send(SYN | ACK, []byte{})
+		err = t.send(SYN | ACK, nil)
 	}
 	return
 }
 
 func (t *Tunnel) proc_fin (pkt *Packet) (err error) {
 	switch t.status {
-	case TIMEWAIT: t.send(ACK, []byte{})
+	case TIMEWAIT: t.send(ACK, nil)
 	case EST:
 		t.status = LASTACK
-		err = t.send(FIN | ACK, []byte{})
+		err = t.send(FIN | ACK, nil)
 		t.c_write = nil
 		return
 	case FINWAIT1:
 		if len(t.sendbuf) == 0 {
 			t.status = TIMEWAIT
-			err = t.send(ACK, []byte{})
+			err = t.send(ACK, nil)
 			if err != nil { return }
 			t.finwait = nil
 			// t.timewait = time.After(2*time.Duration(TM_MSL)*time.Millisecond)
@@ -234,18 +236,18 @@ func (t *Tunnel) proc_fin (pkt *Packet) (err error) {
 			for len(t.c_close) < 2 { t.c_close <- EV_CLOSED }
 		}else{
 			t.status = CLOSING
-			err = t.send(ACK, []byte{})
+			err = t.send(ACK, nil)
 		}
 	case FINWAIT2:
 		t.status = TIMEWAIT
-		err = t.send(ACK, []byte{})
+		err = t.send(ACK, nil)
 		if err != nil { return }
 		t.finwait = nil
 		// t.timewait = time.After(2*time.Duration(TM_MSL)*time.Millisecond)
 		t.timewait = time.After(time.Duration(t.rtt << 3 + t.rttvar << 5))
 		for len(t.c_close) < 2 { t.c_close <- EV_CLOSED }
 	default:
-		t.send(RST, []byte{})
+		t.send(RST, nil)
 		t.c_event <- EV_END
 		return fmt.Errorf("FIN status wrong, %s", t)
 	}

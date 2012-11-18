@@ -1,7 +1,6 @@
 package tunnel
 
 import (
-	"bufio"
 	"fmt"
 	"net"
 	"strings"
@@ -22,20 +21,19 @@ type Client struct {
 
 func (c *Client) sender () {
 	var err error
-	var ok bool
-	var buf *bufio.Writer
+	var n int
 	var db *SendBlock
 
 	for {
-		db, ok = <- c.t.c_send
-		if !ok { break }
+		db = <- c.t.c_send
 
-		buf = bufio.NewWriterSize(c.conn, 2*SMSS)
-		err = db.pkt.WriteTo(buf)
-		if _, ok := err.(*net.OpError); ok {
-			break
+		n, err = db.pkt.Pack()
+		if err != nil {
+			logcli.Err(err)
+			continue
 		}
-		err = buf.Flush()
+
+		_, err = c.conn.Write(db.pkt.buf[:n])
 		if _, ok := err.(*net.OpError); ok {
 			break
 		}
@@ -48,20 +46,25 @@ func (c *Client) sender () {
 
 func (c *Client) recver () {
 	var err error
-	var rb *RecvBlock
+	var n int
+	var pkt *Packet
 
 	for {
-		rb = get_recvblock()
-		rb.n, err = c.conn.Read(rb.buf[:])
+		pkt = get_packet()
+		n, err = c.conn.Read(pkt.buf[:])
 		if _, ok := err.(*net.OpError); ok {
+			put_packet(pkt)
 			break
 		}
 		if err != nil {
+			put_packet(pkt)
 			logcli.Err(err)
 			break
 		}
 
-		c.t.c_recv <- rb
+		err = pkt.Unpack(n)
+		if err != nil { continue }
+		c.t.c_recv <- pkt
 	}
 }
 

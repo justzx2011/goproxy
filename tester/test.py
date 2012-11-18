@@ -60,7 +60,7 @@ def initlog(lv, logfile=None):
 
 def main():
     initlog(logging.INFO)
-    url = 'http://www.douban.com/'
+    url = 'http://localhost/'
     d = download(url)
     if len(sys.argv) <= 1 or sys.argv[1] != 'once':
         doloop(url, d)

@@ -33,26 +33,23 @@ func NewServer(conn *net.UDPConn) (srv *Server) {
 
 func (srv *Server) sender () {
 	var err error
-	var buf []byte
+	var n int
 	var db *SendBlock
 	for {
-		db, _ = <- srv.c_send
-		buf, err = db.pkt.Pack()
+		db = <- srv.c_send
+
+		n, err = db.pkt.Pack()
 		if err != nil {
 			logsrv.Err(err)
 			continue
 		}
-		buf, err = db.pkt.Pack()
-		if err != nil {
-			logsrv.Err(err)
-			continue
-		}
-		_, err = srv.conn.WriteToUDP(buf, db.remote)
+
+		_, err = srv.conn.WriteToUDP(db.pkt.buf[:n], db.remote)
 		if err != nil { logsrv.Err(err) }
 	}
 }
 
-func (srv *Server) get_tunnel(remote *net.UDPAddr, buf []byte) (t *Tunnel, err error) {
+func (srv *Server) get_tunnel(remote *net.UDPAddr, pkt *Packet) (t *Tunnel, err error) {
 	var ok bool
 	remotekey := remote.String()
 	t, ok = srv.dispatcher[remotekey]
@@ -62,7 +59,7 @@ func (srv *Server) get_tunnel(remote *net.UDPAddr, buf []byte) (t *Tunnel, err e
 	// 	return nil, errors.New("too many connection")
 	// }
 
-	if buf[0] != SYN {
+	if pkt.flag != SYN {
 		return nil, errors.New("packet to unknow tunnel, " + remotekey)
 	}
 
@@ -90,19 +87,27 @@ func UdpServer (addr string, handler func (net.Conn) (error)) (err error) {
 	srv := NewServer(conn)
 	srv.handler = handler
 
-	var rb *RecvBlock
+	var n int
+	var pkt *Packet
 	var remote *net.UDPAddr
 	var t *Tunnel
 
 	for {
-		rb = get_recvblock()
-		rb.n, remote, err = conn.ReadFromUDP(rb.buf[:])
+		pkt = get_packet()
+		n, remote, err = conn.ReadFromUDP(pkt.buf[:])
+		if err != nil {
+			put_packet(pkt)
+			logsrv.Err(err)
+			continue
+		}
+
+		err = pkt.Unpack(n)
 		if err != nil {
 			logsrv.Err(err)
 			continue
 		}
 
-		t, err = srv.get_tunnel(remote, rb.buf[:rb.n])
+		t, err = srv.get_tunnel(remote, pkt)
 		if err != nil {
 			logsrv.Err(err)
 			continue
@@ -112,7 +117,7 @@ func UdpServer (addr string, handler func (net.Conn) (error)) (err error) {
 			continue
 		}
 
-		t.c_recv <- rb
+		t.c_recv <- pkt
 	}
 	return
 }

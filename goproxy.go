@@ -38,7 +38,7 @@ func init() {
 	flag.StringVar(&passfile, "passfile", "", "password file")
 
 	flag.StringVar(&logfile, "logfile", "", "log file")
-	flag.StringVar(&loglevel, "loglevel", "INFO", "log level")
+	flag.StringVar(&loglevel, "loglevel", "WARNING", "log level")
 	flag.Parse()
 
 	lv, err := sutils.GetLevelByName(loglevel)

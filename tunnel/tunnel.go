@@ -21,9 +21,8 @@ type Tunnel struct {
 	status uint8
 
 	// communicate with conn loop
-	c_recv chan *RecvBlock
+	c_recv chan *Packet
 	c_send chan *SendBlock
-	// c_sendfree chan *SendBlock
 	onclose func ()
 
 	// basic status
@@ -55,8 +54,8 @@ type Tunnel struct {
 	readbuf bytes.Buffer
 	c_read chan uint8
 	// readlen int32
-	c_write chan []byte
-	c_wrbak chan []byte
+	c_write chan *Packet
+	c_wrbak chan *Packet
 	c_event chan uint8
 	c_connect chan uint8
 	c_close chan uint8
@@ -68,7 +67,7 @@ func NewTunnel(remote *net.UDPAddr, name string) (t *Tunnel) {
 	t.remote = remote
 	t.status = CLOSED
 
-	t.c_recv = make(chan *RecvBlock, 1)
+	t.c_recv = make(chan *Packet, 1)
 
 	t.sendseq = 0
 	t.recvseq = 0
@@ -85,8 +84,8 @@ func NewTunnel(remote *net.UDPAddr, name string) (t *Tunnel) {
 	t.retrans_count = 0
 	t.keepalive = time.After(time.Duration(TM_KEEPALIVE) * time.Second)
 
-	t.c_read = make(chan uint8, 1)
-	t.c_write = make(chan []byte, 1)
+	t.c_read = make(chan uint8)
+	t.c_write = make(chan *Packet, 1)
 	t.c_wrbak = t.c_write
 	t.c_event = make(chan uint8, 1)
 	t.c_connect = make(chan uint8, 1)
@@ -102,9 +101,9 @@ func (t Tunnel) String () string {
 
 func (t *Tunnel) Dump() string {
 	return fmt.Sprintf(
-		"st: %s, sseq: %d, rseq: %d, sbuf: %d, rbuf: %d, read: %d/%d, write: %d, blk: %t",
+		"st: %s, sseq: %d, rseq: %d, sbuf: %d, rbuf: %d, read: %d, write: %d, blk: %t",
 		DumpStatus(t.status), t.sendseq, t.recvseq,
-		len(t.sendbuf), len(t.recvbuf), len(t.c_read), t.readbuf.Len(),
+		len(t.sendbuf), len(t.recvbuf), t.readbuf.Len(),
 		len(t.c_wrbak), t.c_write == nil)
 }
 
@@ -116,9 +115,9 @@ func (t Tunnel) DumpCounter () string {
 
 func (t *Tunnel) main () {
 	var err error
-	var buf []byte
 	var ev uint8
-	var rb *RecvBlock
+	var pkt *Packet
+	// var rb *RecvBlock
 	defer t.on_quit()
 
 QUIT:
@@ -130,32 +129,27 @@ QUIT:
 			err = t.on_event(ev)
 		case <- t.connest:
 			t.logger.Debug("timer connest")
-			t.send(RST, []byte{})
+			t.send(RST, nil)
 			t.c_event <- EV_END
 		case <- t.retrans:
 			t.logger.Debug("timer retrans")
 			err = t.on_retrans()
 		case <- t.delayack:
 			t.logger.Debug("timer delayack")
-			err = t.send(ACK, []byte{})
+			err = t.send(ACK, nil)
 		case <- t.keepalive:
 			t.logger.Debug("timer keepalive")
-			t.send(RST, []byte{})
+			t.send(RST, nil)
 			t.c_event <- EV_END
 		case <- t.finwait:
 			t.logger.Debug("timer finwait")
-			t.send(RST, []byte{})
+			t.send(RST, nil)
 			t.c_event <- EV_END
 		case <- t.timewait:
 			t.logger.Debug("timer timewait")
 			t.c_event <- EV_END
-		case rb = <- t.c_recv:
-			err = t.on_data(rb.buf[:rb.n])
-			select {
-			case c_recvfree <- rb:
-			default:
-			}
-		case buf = <- t.c_write: err = t.send(0, buf)
+		case pkt = <- t.c_recv: err = t.on_packet(pkt)
+		case pkt = <- t.c_write: err = t.send(0, pkt)
 		}
 		if err != nil { t.logger.Err(err) }
 		t.logger.Debug(t.Dump())
@@ -167,21 +161,21 @@ func (t *Tunnel) on_event (ev uint8) (err error) {
 	switch ev {
 	case EV_CONNECT:
 		if t.status != CLOSED {
-			t.send(RST, []byte{})
+			t.send(RST, nil)
 			t.c_event <- EV_END
 			return fmt.Errorf("somebody try to connect, %s", t)
 		}
 		t.connest = time.After(time.Duration(TM_CONNEST) * time.Second)
 		t.status = SYNSENT
-		return t.send(SYN, []byte{})
+		return t.send(SYN, nil)
 	case EV_CLOSE:
 		if t.status != EST { return }
 		t.finwait = time.After(time.Duration(TM_FINWAIT) * time.Millisecond)
 		t.status = FINWAIT1
 		t.c_write = nil
-		return t.send(FIN, []byte{})
+		return t.send(FIN, nil)
 	case EV_READ:
-		return t.send(ACK, []byte{})
+		return t.send(ACK, nil)
 	}
 	return errors.New("unknown event")
 }

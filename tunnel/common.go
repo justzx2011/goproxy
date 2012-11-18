@@ -99,25 +99,6 @@ type SendBlock struct {
 	pkt *Packet
 }
 
-type RecvBlock struct {
-	buf [1500]byte
-	n int
-}
-
-var c_recvfree chan *RecvBlock
-
-func init () {
-	c_recvfree = make(chan *RecvBlock, 100)
-}
-
-func get_recvblock () (rb *RecvBlock) {
-	select {
-	case rb = <- c_recvfree:
-	default: rb = new(RecvBlock)
-	}
-	return
-}
-
 func min(a, b int) int {
 	if a < b { return a }
 	return b

@@ -9,12 +9,21 @@ import (
 )
 
 func main () {
-	var buf bytes.Buffer
-
 	ar := [4]byte{0x01, 0x02, 0x03, 0x04}
+	var buf bytes.Buffer
+	var b []byte
+	b = make([]byte, 10)
+
 	buf.Write(ar[:])
 
-	ar[0] = 0x08
+	n, err := buf.Read(b)
+	fmt.Println(b[:n], err)
 
-	fmt.Println(ar, buf.Bytes())
+	n, err = buf.Read(b)
+	fmt.Println(b[:n], err)
+
+	buf.Write(ar[:])
+
+	n, err = buf.Read(b)
+	fmt.Println(b[:n], err)
 }

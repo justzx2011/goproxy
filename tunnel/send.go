@@ -10,27 +10,37 @@ import (
 
 func (t *Tunnel) send_sack () (err error) {
 	t.logger.Warning("sack send")
-	buf := bytes.NewBuffer([]byte{})
+	pkt := get_packet()
+	buf := bytes.NewBuffer(pkt.buf[HEADERSIZE:])
 	for i, p := range t.recvbuf {
-		if i > 0x7f { break }
+		if i > SMSS/4 { break }
 		binary.Write(buf, binary.BigEndian, p.seq)
 	}
-	return t.send(SACK, buf.Bytes())
+	pkt.content = buf.Bytes()
+	return t.send(SACK, pkt)
 }
 
-func (t *Tunnel) send (flag uint8, content []byte) (err error) {
+func (t *Tunnel) send (flag uint8, pkt *Packet) (err error) {
 	if t.status != EST && flag == 0{
 		return fmt.Errorf("can't send data, %s, pkt: %s", t, DumpFlag(flag))
 	}
 
+	if pkt == nil {
+		pkt = get_packet()
+		pkt.content = pkt.buf[HEADERSIZE:HEADERSIZE]
+	}
 	if t.recvack != t.recvseq { flag |= ACK }
-	retrans := (flag & SACK) == 0 && (flag != ACK || len(content) != 0)
-	err = t.send_packet(NewPacket(t, flag, content), retrans)
+	pkt.flag = flag
+	pkt.read_status(t)
+	size := len(pkt.content)
+
+	retrans := (flag & SACK) == 0 && (flag != ACK || size != 0)
+	err = t.send_packet(pkt, retrans)
 	if err != nil { return }
 
 	switch {
 	case (flag & SACK) != 0:
-	case len(content) > 0: t.sendseq += int32(len(content))
+	case size > 0: t.sendseq += int32(size)
 	case flag != ACK: t.sendseq += 1
 	}
 	t.check_windows_block()
@@ -50,6 +60,7 @@ func (t *Tunnel) send_packet(pkt *Packet, retrans bool) (err error) {
 	}
 	if !retrans { return }
 
+	// FIXME: a packet with no retrans maybe unable to recycle
 	pkt.t = time.Now()
 	t.sendbuf.Push(pkt)
 
@@ -74,7 +85,7 @@ func (t *Tunnel) on_retrans () (err error) {
 	t.retrans_count += 1
 	if t.retrans_count > MAXRESEND {
 		t.logger.Warning("send packet more then maxretrans times")
-		t.send(RST, []byte{})
+		t.send(RST, nil)
 		t.c_event <- EV_END
 		return
 	}
@@ -96,10 +107,10 @@ func (t *Tunnel) check_windows_block () {
 	if len(t.sendbuf) > 0 { inairlen = t.sendseq - t.sendbuf[0].seq }
 	switch {
 	case (inairlen >= t.sendwnd) || (inairlen >= t.cwnd):
-		t.logger.Warning("blocking,", inairlen, t.sendwnd, t.cwnd, t.ssthresh)
+		t.logger.Notice("blocking,", inairlen, t.sendwnd, t.cwnd, t.ssthresh)
 		t.c_write = nil
 	case t.status == EST && t.c_write == nil:
-		t.logger.Warning("restart,", inairlen, t.sendwnd, t.cwnd, t.ssthresh)
+		t.logger.Notice("restart,", inairlen, t.sendwnd, t.cwnd, t.ssthresh)
 		t.c_write = t.c_wrbak // when inairlen < pkt.window
 	}
 }

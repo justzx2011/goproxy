@@ -21,16 +21,14 @@ func NewTunnelConn(t *Tunnel) (tc *TunnelConn) {
 
 func (tc TunnelConn) Read(b []byte) (n int, err error) {
 	var ok bool
+	var l int
 
-	if tc.t.status == CLOSED {
-		tc.t.logger.Debug("Read status EOF")
-		return 0, io.EOF
-	}
+	for {
+		tc.t.readlck.Lock()
+		l := tc.t.readbuf.Len()
+		tc.t.readlck.Unlock()
 
-	tc.t.readlck.Lock()
-	l := tc.t.readbuf.Len()
-	tc.t.readlck.Unlock()
-	if l == 0 {
+		if l > 0 { break }
 		_, ok = <- tc.t.c_read
 		if !ok { return 0, io.EOF }
 	}
@@ -50,29 +48,37 @@ func (tc TunnelConn) Read(b []byte) (n int, err error) {
 }
 
 func (tc TunnelConn) Write(b []byte) (n int, err error) {
+	var size int
+	var pkt *Packet
 	n = 0
-	err = SplitBytes(b, SMSS, func (bi []byte) (err error){
+	for i := 0; i < len(b); i += SMSS {
+		if len(b) - i >= SMSS {
+			size = SMSS
+		}else{ size = len(b) - i }
+
+		pkt = half_packet(b[i:i+size])
 		if tc.t.status == CLOSED {
-			tc.t.logger.Debug("write status EOF")
-			return io.EOF
+			// tc.t.logger.Debug("write status EOF")
+			return 0, io.EOF
 		}
 		select {
 		case <- tc.t.c_close:
-			tc.t.logger.Debug("write event EOF")
-			return io.EOF
-		case tc.t.c_write <- bi: n += len(bi)
+			// tc.t.logger.Debug("write event EOF")
+			return 0, io.EOF
+		case tc.t.c_write <- pkt: n += size
 		}
-		return 
-	})
+		
+		if err != nil { return }
+	}
 	return
 }
 
 func (tc TunnelConn) Close() (err error) {
 	if tc.t.status == CLOSED { return }
-	tc.t.logger.Debug("closing")
+	// tc.t.logger.Debug("closing")
 	if tc.t.status == EST { tc.t.c_event <- EV_CLOSE }
 	<- tc.t.c_close
-	tc.t.logger.Debug("closed")
+	// tc.t.logger.Debug("closed")
 	return
 }
 
