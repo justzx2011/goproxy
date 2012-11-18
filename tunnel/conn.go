@@ -1,7 +1,6 @@
 package tunnel
 
 import (
-	"bytes"
 	"io"
 	"net"
 	"time"
@@ -9,13 +8,11 @@ import (
 
 type TunnelConn struct {
 	t *Tunnel
-	buf *bytes.Buffer
 }
 
 func NewTunnelConn(t *Tunnel) (tc *TunnelConn) {
 	tc = new(TunnelConn)
 	tc.t = t
-	tc.buf = bytes.NewBuffer([]byte{})
 	return
 }
 

@@ -11,9 +11,9 @@ import (
 func (t *Tunnel) send_sack () (err error) {
 	t.logger.Warning("sack send")
 	pkt := get_packet()
-	buf := bytes.NewBuffer(pkt.buf[HEADERSIZE:])
+	buf := bytes.NewBuffer(pkt.buf[HEADERSIZE:HEADERSIZE])
 	for i, p := range t.recvbuf {
-		if i > SMSS/4 { break }
+		if i >= SMSS/4 - 1 { break }
 		binary.Write(buf, binary.BigEndian, p.seq)
 	}
 	pkt.content = buf.Bytes()
@@ -111,6 +111,6 @@ func (t *Tunnel) check_windows_block () {
 		t.c_write = nil
 	case t.status == EST && t.c_write == nil:
 		t.logger.Notice("restart,", inairlen, t.sendwnd, t.cwnd, t.ssthresh)
-		t.c_write = t.c_wrbak // when inairlen < pkt.window
+		t.c_write = t.c_wrbak
 	}
 }

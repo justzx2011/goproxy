@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log"
 	"net"
-	"io"
 	"os"
 	"strings"
 	"../sutils"
@@ -64,9 +63,7 @@ func (ap *AuthPassword) SelectMethod(methods []byte) (method byte) {
 	return 0xff
 }
 
-func (ap *AuthPassword) Handler(conn net.Conn) (err error) {
-	defer conn.Close()
-
+func (ap *AuthPassword) Handler(conn net.Conn) (dstconn *net.TCPConn, err error) {
 	reader := bufio.NewReader(conn)
 	writer := bufio.NewWriter(conn)
 
@@ -88,7 +85,7 @@ func (ap *AuthPassword) Handler(conn net.Conn) (err error) {
 		err = SendAuthResult(writer, 0x00)
 		if err != nil { return }
 	case 0xff:
-		return errors.New("auth method not supported")
+		return nil, errors.New("auth method not supported")
 	}
 	if DEBUG { log.Println("handshark ok") }
 
@@ -97,20 +94,12 @@ func (ap *AuthPassword) Handler(conn net.Conn) (err error) {
 	if err != nil { return }
 	if DEBUG { log.Println("dst:", dstaddr.String()) }
 
-	var dstconn *net.TCPConn
 	dstconn, err = net.DialTCP("tcp4", nil, &dstaddr)
 	if err != nil {
 		SendResponse(writer, 0x04)
 		return
 	}
-	defer dstconn.Close()
 	SendResponse(writer, 0x00)
 
-	go func () {
-		defer conn.Close()
-		defer dstconn.Close()
-		io.Copy(conn, dstconn)
-	}()
-	io.Copy(dstconn, conn)
 	return
 }

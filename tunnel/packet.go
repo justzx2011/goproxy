@@ -67,7 +67,10 @@ func (p *Packet) String() string {
 
 func (p *Packet) Pack() (n int, err error) {
 	buf := bytes.NewBuffer(p.buf[:0])
-	if len(p.content) > SMSS { return 0, errors.New("packet too large") }
+	if len(p.content) > SMSS {
+		fmt.Println(p)
+		return 0, fmt.Errorf("packet too large, %d/%d", len(p.content), SMSS)
+	}
 	err = binary.Write(buf, binary.BigEndian, &p.flag)
 	if err != nil { return }
 	err = binary.Write(buf, binary.BigEndian, &p.window)
@@ -97,7 +100,7 @@ func (p *Packet) Unpack(n int) (err error) {
 	if err != nil { return }
 
 	if buf.Len() < int(l) { return errors.New("packet broken") }
-	if l > SMSS { return errors.New("packet too large") }
+	if l > SMSS { return fmt.Errorf("packet too large, %d/%d", l, SMSS) }
 	p.content = buf.Bytes()
 	return
 }

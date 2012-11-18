@@ -83,9 +83,9 @@ func run_udpcli () {
 		go func () {
 			defer conn.Close()
 			defer dstconn.Close()
-			io.Copy(conn, dstconn)
+			tunnel.Copy(conn, dstconn)
 		}()
-		io.Copy(dstconn, conn)
+		tunnel.Copy(dstconn, conn)
 		return
 	})
 	if err != nil {
@@ -145,7 +145,19 @@ func run_udpsrv () {
 		// 	conn, err = f(conn)
 		// 	if err != nil { return }
 		// }
-		return ap.Handler(conn)
+
+		defer conn.Close()
+		dstconn, err := ap.Handler(conn)
+		if err != nil { return }
+		defer dstconn.Close()
+
+		go func () {
+			defer conn.Close()
+			defer dstconn.Close()
+			tunnel.Copy(conn, dstconn)
+		}()
+		tunnel.Copy(dstconn, conn)
+		return
 	})
 	if err != nil {
 		log.Println(err.Error())
@@ -165,7 +177,19 @@ func run_server () {
 			conn, err = f(conn)
 			if err != nil { return }
 		}
-		return ap.Handler(conn)
+
+		defer conn.Close()
+		dstconn, err := ap.Handler(conn)
+		if err != nil { return }
+		defer dstconn.Close()
+
+		go func () {
+			defer conn.Close()
+			defer dstconn.Close()
+			io.Copy(conn, dstconn)
+		}()
+		io.Copy(dstconn, conn)
+		return
 	})
 	if err != nil {
 		log.Println(err.Error())

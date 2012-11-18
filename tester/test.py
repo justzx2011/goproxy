@@ -5,6 +5,7 @@
 @author: shell.xu
 '''
 import sys, gevent, logging
+from getopt import getopt
 from urlparse import urlparse
 from gevent import socket, pool
 import http, socks
@@ -22,6 +23,7 @@ def download(uri):
     req = http.request_http(uri)
     req.set_header("Host", url.hostname)
     res = http.http_client(req, (hostname, port), c)
+    res.debug()
     return res.read_body()
 
 def doloop(url, d):
@@ -60,10 +62,13 @@ def initlog(lv, logfile=None):
 
 def main():
     initlog(logging.INFO)
-    url = 'http://localhost/'
+    optlist, args = getopt(sys.argv[1:], "o")
+    optdict = dict(optlist)
+    if not args: url = 'http://localhost/'
+    else: url = args[0]
     d = download(url)
-    if len(sys.argv) <= 1 or sys.argv[1] != 'once':
-        doloop(url, d)
-    else: print d
+    if '-o' in optdict:
+        print d
+    else: doloop(url, d)
 
 if __name__ == '__main__': main()
