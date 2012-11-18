@@ -22,8 +22,11 @@ type Packet struct {
 func NewPacket(t *Tunnel, flag uint8, content []byte) (p *Packet) {
 	p = new(Packet)
 	p.flag = flag
-	if WINDOWSIZE > t.readlen {
-		p.window = uint16(WINDOWSIZE - t.readlen)
+	t.readlck.Lock()
+	l := t.readbuf.Len()
+	t.readlck.Unlock()
+	if WINDOWSIZE > l {
+		p.window = uint16(WINDOWSIZE - l)
 	}else{ p.window = 0 }
 	p.seq = t.sendseq
 	p.ack = t.recvseq

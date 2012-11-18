@@ -20,15 +20,12 @@ def download(uri):
     uri = url.path + ('?'+url.query if url.query else '')
 
     req = http.request_http(uri)
+    req.set_header("Host", url.hostname)
     res = http.http_client(req, (hostname, port), c)
     return res.read_body()
 
-
-def main():
-    url = 'http://www.douban.com/'
-    d = download(url)
+def doloop(url, d):
     counter = [0, 0, 0, 0]
-
     def writest(ch):
         sys.stdout.write(
             '%d/%d/%d/%d = %f/%f/%f%s' % (
@@ -49,5 +46,24 @@ def main():
     for i in xrange(2000): p.spawn(tester)
     p.join()
     writest('\n')
+
+def initlog(lv, logfile=None):
+    rootlog = logging.getLogger()
+    if logfile: handler = logging.FileHandler(logfile)
+    else: handler = logging.StreamHandler()
+    handler.setFormatter(
+        logging.Formatter(
+            '%(asctime)s,%(msecs)03d (%(process)d)%(name)s[%(levelname)s]: %(message)s',
+            '%H:%M:%S'))
+    rootlog.addHandler(handler)
+    rootlog.setLevel(lv)
+
+def main():
+    initlog(logging.INFO)
+    url = 'http://www.douban.com/'
+    d = download(url)
+    if len(sys.argv) <= 1 or sys.argv[1] != 'once':
+        doloop(url, d)
+    else: print d
 
 if __name__ == '__main__': main()

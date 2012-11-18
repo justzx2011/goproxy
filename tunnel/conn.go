@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"io"
 	"net"
-	"sync/atomic"
 	"time"
 )
 
@@ -21,25 +20,33 @@ func NewTunnelConn(t *Tunnel) (tc *TunnelConn) {
 }
 
 func (tc TunnelConn) Read(b []byte) (n int, err error) {
-	if tc.buf.Len() == 0 {
+	var ok bool
+
+	if tc.t.status == CLOSED {
+		tc.t.logger.Debug("Read status EOF")
+		return 0, io.EOF
+	}
+
+	tc.t.readlck.Lock()
+	l := tc.t.readbuf.Len()
+	tc.t.readlck.Unlock()
+	if l == 0 {
+		_, ok = <- tc.t.c_read
+		if !ok { return 0, io.EOF }
+	}
+
+	tc.t.readlck.Lock()
+	n, err = tc.t.readbuf.Read(b)
+	tc.t.readlck.Unlock()
+	if err != nil { return }
+
+	if l > n && tc.t.status == EST {
 		select {
-		case <- tc.t.c_close:
-			tc.t.logger.Debug("read event EOF")
-			return 0, io.EOF
-		case bi, ok := <- tc.t.c_read:
-			if !ok {
-				tc.t.logger.Debug("read EOF")
-				return 0, io.EOF
-			}
-			_, err = tc.buf.Write(bi)
-			if err != nil { return }
-			read_event := tc.t.readlen > RESTARTACK
-			atomic.AddInt32(&tc.t.readlen, -int32(len(bi)))
-			read_event = read_event && (tc.t.readlen < RESTARTACK)
-			if read_event { tc.t.c_event <- EV_READ }
+		case tc.t.c_read <- 1:
+		default:
 		}
 	}
-	return tc.buf.Read(b)
+	return
 }
 
 func (tc TunnelConn) Write(b []byte) (n int, err error) {

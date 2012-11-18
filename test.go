@@ -9,11 +9,12 @@ import (
 )
 
 func main () {
+	var buf bytes.Buffer
+
 	ar := [4]byte{0x01, 0x02, 0x03, 0x04}
-	buf := bytes.NewBuffer(ar[:])
+	buf.Write(ar[:])
 
-	b := buf.Bytes()
-	b[0] = 0x08
+	ar[0] = 0x08
 
-	fmt.Println(ar)
+	fmt.Println(ar, buf.Bytes())
 }

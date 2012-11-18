@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"sync/atomic"
 	"time"
 )
 
@@ -102,8 +101,6 @@ func (t *Tunnel) ack_recv(pkt *Packet) (err error) {
 }
 
 func (t *Tunnel) proc_packet (pkt *Packet) (err error) {
-	// var rb *RecvBlock
-
 	if t.status == SYNRCVD { t.status = EST }
 	if pkt.flag == ACK {
 		err = t.proc_ack(pkt)
@@ -114,9 +111,14 @@ func (t *Tunnel) proc_packet (pkt *Packet) (err error) {
 	case (pkt.flag & SACK) != 0: return t.proc_sack(pkt)
 	case len(pkt.content) > 0:
 		t.recvseq += int32(len(pkt.content))
-		// rb = get_recvblock()
-		t.c_read <- pkt.content
-		atomic.AddInt32(&t.readlen, int32(len(pkt.content)))
+		t.readlck.Lock()
+		_, err = t.readbuf.Write(pkt.content)
+		t.readlck.Unlock()
+		if err != nil { return }
+		select {
+		case t.c_read <- 1:
+		default:
+		}
 	case (pkt.flag != ACK): t.recvseq += 1
 	default: return
 	}

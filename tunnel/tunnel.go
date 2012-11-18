@@ -1,11 +1,13 @@
 package tunnel
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"math/rand"
 	"net"
 	"runtime"
+	"sync"
 	"time"
 	"../sutils"
 )
@@ -49,8 +51,10 @@ type Tunnel struct {
 	timewait <-chan time.Time
 
 	// communicate with conn
-	c_read chan []byte
-	readlen int32
+	readlck sync.Mutex
+	readbuf bytes.Buffer
+	c_read chan uint8
+	// readlen int32
 	c_write chan []byte
 	c_wrbak chan []byte
 	c_event chan uint8
@@ -81,8 +85,7 @@ func NewTunnel(remote *net.UDPAddr, name string) (t *Tunnel) {
 	t.retrans_count = 0
 	t.keepalive = time.After(time.Duration(TM_KEEPALIVE) * time.Second)
 
-	t.c_read = make(chan []byte, READBUFSIZE)
-	t.readlen = 0
+	t.c_read = make(chan uint8, 1)
 	t.c_write = make(chan []byte, 1)
 	t.c_wrbak = t.c_write
 	t.c_event = make(chan uint8, 1)
@@ -101,7 +104,7 @@ func (t *Tunnel) Dump() string {
 	return fmt.Sprintf(
 		"st: %s, sseq: %d, rseq: %d, sbuf: %d, rbuf: %d, read: %d/%d, write: %d, blk: %t",
 		DumpStatus(t.status), t.sendseq, t.recvseq,
-		len(t.sendbuf), len(t.recvbuf), len(t.c_read), t.readlen,
+		len(t.sendbuf), len(t.recvbuf), len(t.c_read), t.readbuf.Len(),
 		len(t.c_wrbak), t.c_write == nil)
 }
 
