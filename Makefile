@@ -10,13 +10,13 @@ all: clean build
 
 build: $(TARGET)
 
-test: goproxy logger
-	./logger --listen :4455 --loglevel DEBUG &
-	echo $!
-	./goproxy --mode udpsrv --listen :8899 --logfile localhost:4455 --loglevel DEBUG &
-	echo $!
-	./goproxy --mode udpcli --listen :1081 --logfile localhost:4455 --loglevel DEBUG localhost:8899 &
-	echo $!
+testlog: logger
+	rm -f *.log
+	./logger --listen :4455 --loglevel INFO &
+
+test: goproxy
+	./goproxy --mode udpsrv --listen :8899 --logfile localhost:4455 --loglevel INFO &
+	./goproxy --mode udpcli --listen :1081 --logfile localhost:4455 --loglevel INFO localhost:8899 &
 
 install:
 	install -d $(DESTDIR)/usr/bin/
@@ -25,7 +25,6 @@ install:
 
 clean:
 	rm -f $(TARGET)
-	rm -f *.log
 
 goproxy: goproxy.go
 	go build -o $@ $^

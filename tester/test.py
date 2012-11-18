@@ -9,7 +9,7 @@ from urlparse import urlparse
 from gevent import socket, pool
 import http, socks
 
-c = socks.socks5(('localhost', 1081))(socket.socket)
+c = socks.socks5(('debox', 1081))(socket.socket)
 def download(uri):
     url = urlparse(uri)
 
@@ -25,7 +25,7 @@ def download(uri):
 
 
 def main():
-    url = 'http://www.facebook.com/'
+    url = 'http://www.douban.com/'
     d = download(url)
     counter = [0, 0, 0, 0]
 
@@ -45,8 +45,8 @@ def main():
         except Exception, e: counter[2] += 1
         writest('\r')
 
-    p = pool.Pool(50)
-    for i in xrange(1000): p.spawn(tester)
+    p = pool.Pool(200)
+    for i in xrange(2000): p.spawn(tester)
     p.join()
     writest('\n')
 

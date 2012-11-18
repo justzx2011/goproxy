@@ -90,3 +90,13 @@ func (tc TunnelConn) SetReadDeadline(t time.Time) error {
 func (tc TunnelConn) SetWriteDeadline(t time.Time) error {
 	return nil
 }
+
+func SplitBytes(b []byte, size int, f func ([]byte) (error)) (err error) {
+	for i := 0; i < len(b); i += size {
+		if i + size < len(b) {
+			err = f(b[i:i+size])
+		}else{ err = f(b[i:]) }
+		if err != nil { return }
+	}
+	return
+}

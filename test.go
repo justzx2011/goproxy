@@ -1,16 +1,19 @@
 package main
 
 import (
-	// "fmt"
-	"log"
+	"bytes"
+	"fmt"
+	// "log"
 	// "net"
-	"./sutils"
+	// "./sutils"
 )
 
 func main () {
-	lv, err := sutils.GetLevelByName("DEBUG")
-	err = sutils.SetupLog(":4455", lv)
-	if err != nil { log.Println(err) }
-	t := sutils.NewLogger("test")
-	t.Info("OK", 1, 2)
+	ar := [4]byte{0x01, 0x02, 0x03, 0x04}
+	buf := bytes.NewBuffer(ar[:])
+
+	b := buf.Bytes()
+	b[0] = 0x08
+
+	fmt.Println(ar)
 }

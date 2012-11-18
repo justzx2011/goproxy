@@ -96,14 +96,14 @@ func log_analyzer (b []byte) (key string, l string, err error) {
 	header := strings.Split(ss[2], " ")
 	timestamp := header[0]
 	hostname := header[1]
-	// procid := header[2]
+	procid := header[2]
 	msgid := header[3]
 	msg := ss[3]
 
-	// key = hostname + "_" + procid
-	// l = fmt.Sprintf("%s %s[%s]: %s\n", timestamp, msgid, pri, msg)
-	key = hostname + "_" + msgid
-	l = fmt.Sprintf("%s [%s]: %s\n", timestamp, pri, msg)
+	key = hostname + "_" + procid
+	l = fmt.Sprintf("%s %s[%s]: %s\n", timestamp, msgid, pri, msg)
+	// key = hostname + "_" + msgid
+	// l = fmt.Sprintf("%s [%s]: %s\n", timestamp, pri, msg)
 	return
 }
 
@@ -154,10 +154,10 @@ func main () {
 			}
 
 			counter += 1
-			if (recv_counter % 10) == 0 { fmt.Printf("%d/%d.\r", counter, recv_counter) }
+			// if (recv_counter % 10) == 0 { fmt.Printf("%d/%d.\r", counter, recv_counter) }
 			time_flush = time.After(time.Duration(3) * time.Second)
 		case <- time_flush:
-			fmt.Println("flush out\t\t\t\n")
+			fmt.Println("flush out\n")
 			for _, v := range fmap { cw <- v }
 			fmap = make(map[string]*FlushBlock)
 		}

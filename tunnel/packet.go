@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 )
 
@@ -30,25 +31,30 @@ func NewPacket(t *Tunnel, flag uint8, content []byte) (p *Packet) {
 	return
 }
 
-func (p Packet) Dump() string {
+func (p Packet) String() string {
 	return fmt.Sprintf("flag: %s, seq: %d, ack: %d, wnd: %d, len: %d",
 		DumpFlag(p.flag), p.seq, p.ack, p.window, len(p.content))
 }
 
 func (p Packet) Pack() (b []byte, err error) {
 	var buf bytes.Buffer
-	err = binary.Write(&buf, binary.BigEndian, &p.flag)
-	if err != nil { return }
-	err = binary.Write(&buf, binary.BigEndian, &p.window)
-	if err != nil { return }
-	err = binary.Write(&buf, binary.BigEndian, &p.seq)
-	if err != nil { return }
-	err = binary.Write(&buf, binary.BigEndian, &p.ack)
-	if err != nil { return }
-	err = binary.Write(&buf, binary.BigEndian, uint16(len(p.content)))
-	if err != nil { return }
-	_, err = buf.Write(p.content)
+	p.WriteTo(&buf)
 	return buf.Bytes(), err
+}
+
+func (p *Packet) WriteTo(w io.Writer) (err error) {
+	err = binary.Write(w, binary.BigEndian, &p.flag)
+	if err != nil { return }
+	err = binary.Write(w, binary.BigEndian, &p.window)
+	if err != nil { return }
+	err = binary.Write(w, binary.BigEndian, &p.seq)
+	if err != nil { return }
+	err = binary.Write(w, binary.BigEndian, &p.ack)
+	if err != nil { return }
+	err = binary.Write(w, binary.BigEndian, uint16(len(p.content)))
+	if err != nil { return }
+	_, err = w.Write(p.content)
+	return
 }
 
 func Unpack(b []byte) (p *Packet, err error) {

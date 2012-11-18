@@ -1,6 +1,7 @@
 package tunnel
 
 import (
+	"bufio"
 	"fmt"
 	"net"
 	"strings"
@@ -22,12 +23,19 @@ type Client struct {
 func (c *Client) sender () {
 	var err error
 	var ok bool
-	var db *DataBlock
+	var buf *bufio.Writer
+	var db *SendBlock
 
 	for {
 		db, ok = <- c.t.c_send
 		if !ok { break }
-		_, err = c.conn.Write(db.buf)
+
+		buf = bufio.NewWriterSize(c.conn, 2*SMSS)
+		err = db.pkt.WriteTo(buf)
+		if _, ok := err.(*net.OpError); ok {
+			break
+		}
+		err = buf.Flush()
 		if _, ok := err.(*net.OpError); ok {
 			break
 		}
@@ -40,12 +48,11 @@ func (c *Client) sender () {
 
 func (c *Client) recver () {
 	var err error
-	var n int
-	var buf []byte
+	var rb *RecvBlock
 
 	for {
-		buf = make([]byte, 2048)
-		n, err = c.conn.Read(buf)
+		rb = get_recvblock()
+		rb.n, err = c.conn.Read(rb.buf[:])
 		if _, ok := err.(*net.OpError); ok {
 			break
 		}
@@ -54,7 +61,7 @@ func (c *Client) recver () {
 			break
 		}
 
-		c.t.c_recv <- buf[:n]
+		c.t.c_recv <- rb
 	}
 }
 
@@ -70,10 +77,12 @@ func DialTunnel(addr string) (tc net.Conn, err error) {
 
 	name := fmt.Sprintf("%s_cli", strings.Split(localaddr.String(), ":")[1])
 	t = NewTunnel(udpaddr, name)
-	t.c_send = make(chan *DataBlock, 1)
+	t.c_send = make(chan *SendBlock, 1)
+	// t.c_sendfree = make(chan *SendBlock, 1)
 	t.onclose = func () {
 		logcli.Info("close tunnel", localaddr)
-		conn.Close()
+		err := conn.Close()
+		if err != nil { logcli.Err(err) }
 	}
 
 	c := &Client{t, conn, name}
