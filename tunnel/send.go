@@ -9,7 +9,7 @@ import (
 )
 
 func (t *Tunnel) send_sack () (err error) {
-	t.logger.Warning("sack send")
+	t.logger.Warning("sack send", t.recvbuf.String())
 	pkt := get_packet()
 	buf := bytes.NewBuffer(pkt.buf[HEADERSIZE:HEADERSIZE])
 	for i, p := range t.recvbuf {
@@ -37,6 +37,7 @@ func (t *Tunnel) send (flag uint8, pkt *Packet) (err error) {
 	retrans := (flag & SACK) == 0 && (flag != ACK || size != 0)
 	err = t.send_packet(pkt, retrans)
 	if err != nil { return }
+	if !retrans { put_packet(pkt) }
 
 	switch {
 	case (flag & SACK) != 0:

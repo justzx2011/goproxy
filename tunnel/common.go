@@ -3,6 +3,7 @@ package tunnel
 import (
 	"net"
 	"strings"
+	"strconv"
 )
 
 const (
@@ -84,13 +85,30 @@ func DumpFlag(flag uint8) (r string) {
 
 type PacketQueue []*Packet
 
-func (ph *PacketQueue) Push(p *Packet) {
-	*ph = append(*ph, p)
+func (pq *PacketQueue) Push(pkt *Packet) {
+	var i int
+
+	for i = len(*pq)-1; i >= 0; i-- {
+		if ((*pq)[i].seq - pkt.seq) < 0 { break }
+	}
+
+	switch i {
+	case len(*pq)-1: *pq = append(*pq, pkt)
+	default:
+		*pq = append(*pq, nil)
+		copy((*pq)[i+2:], (*pq)[i+1:])
+		(*pq)[i+1] = pkt
+	}
 }
 
-func (ph *PacketQueue) Pop() (p *Packet) {
-	p = (*ph)[0]
-	*ph = (*ph)[1:]
+func (pq *PacketQueue) Pop() (p *Packet) {
+	p = (*pq)[0]
+	*pq = (*pq)[1:]
+	return
+}
+
+func (pq *PacketQueue) String () (s string) {
+	for _, p := range *pq { s += strconv.Itoa(int(p.seq)) + "|" }
 	return
 }
 

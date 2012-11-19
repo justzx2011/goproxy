@@ -153,7 +153,7 @@ QUIT:
 		}
 		if err != nil { t.logger.Err(err) }
 		t.logger.Debug(t.Dump())
-		t.logger.Debug(t.DumpCounter())
+		// t.logger.Debug(t.DumpCounter())
 	}
 }
 
@@ -188,7 +188,7 @@ func (t *Tunnel) on_quit () {
 	for len(t.c_close) < 2 { t.c_close <- EV_CLOSED }
 	close(t.c_wrbak)
 	if t.onclose != nil { t.onclose() }
-	if rand.Intn(100) > 80 {
+	if rand.Intn(100) > 95 {
 		runtime.GC()
 	}
 }

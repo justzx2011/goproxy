@@ -154,10 +154,17 @@ func (t *Tunnel) proc_ack (pkt *Packet) (err error) {
 func (t *Tunnel) proc_sack(pkt *Packet) (err error) {
 	var id int32
 	var sendbuf PacketQueue
-	t.logger.Warning("sack proc")
+	t.logger.Warning("sack proc", t.sendbuf.String())
 	buf := bytes.NewBuffer(pkt.content)
 
-	binary.Read(buf, binary.BigEndian, &id)
+	err = binary.Read(buf, binary.BigEndian, &id)
+	if err == io.EOF {
+		err = nil
+		break
+	}
+	if err != nil { return }
+	t.logger.Notice(id)
+
 	for _, p := range t.sendbuf {
 		if p.seq == id {
 			put_packet(p)
@@ -167,6 +174,7 @@ func (t *Tunnel) proc_sack(pkt *Packet) (err error) {
 				break
 			}
 			if err != nil { return }
+			t.logger.Notice(id)
 		}else{ sendbuf = append(sendbuf, p) }
 	}
 	t.sendbuf = sendbuf

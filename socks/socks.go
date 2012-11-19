@@ -4,12 +4,9 @@ import (
 	"bufio"
 	"errors"
 	"encoding/binary"
-	"log"
 	"net"
 	"../sutils"
 )
-
-const DEBUG = false
 
 func GetString(reader *bufio.Reader) (s string, err error) {
 	var c byte
@@ -89,7 +86,7 @@ func GetConnect(reader *bufio.Reader) (addr net.TCPAddr, err error) {
 	c, err = reader.ReadByte()
 	switch c {
 	case 0x01: // IP V4 address
-		if DEBUG { log.Println("socks with ipaddr") }
+		sutils.Debug("socks with ipaddr")
 		n, err = reader.Read(addr.IP[:])
 		if err != nil { return }
 		if n != 4 {
@@ -97,7 +94,7 @@ func GetConnect(reader *bufio.Reader) (addr net.TCPAddr, err error) {
 			return
 		}
 	case 0x03: // DOMAINNAME
-		if DEBUG { log.Println("socks with domain") }
+		sutils.Debug("socks with domain")
 		var ips []net.IP
 		c, err = reader.ReadByte()
 		if err != nil { return }

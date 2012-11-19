@@ -87,14 +87,14 @@ func (ap *AuthPassword) Handler(conn net.Conn) (dstconn *net.TCPConn, err error)
 	case 0xff:
 		return nil, errors.New("auth method not supported")
 	}
-	if DEBUG { log.Println("handshark ok") }
+	sutils.Debug("handshark ok")
 
 	var dstaddr net.TCPAddr
 	dstaddr, err = GetConnect(reader)
 	if err != nil { return }
-	if DEBUG { log.Println("dst:", dstaddr.String()) }
+	sutils.Debug("dst:", dstaddr)
 
-	dstconn, err = net.DialTCP("tcp4", nil, &dstaddr)
+	dstconn, err = net.DialTCP("tcp", nil, &dstaddr)
 	if err != nil {
 		SendResponse(writer, 0x04)
 		return

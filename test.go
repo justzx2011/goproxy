@@ -1,29 +1,37 @@
 package main
 
 import (
-	"bytes"
+	// "bytes"
 	"fmt"
 	// "log"
 	// "net"
 	// "./sutils"
+	// "./tunnel"
 )
 
 func main () {
-	ar := [4]byte{0x01, 0x02, 0x03, 0x04}
-	var buf bytes.Buffer
-	var b []byte
-	b = make([]byte, 10)
+	var pkt *Packet
+	var pq PacketQueue
 
-	buf.Write(ar[:])
+	pkt = new(Packet)
+	pkt.seq = 0
+	pq.Push(pkt)
 
-	n, err := buf.Read(b)
-	fmt.Println(b[:n], err)
+	pkt = new(Packet)
+	pkt.seq = 3
+	pq.Push(pkt)
 
-	n, err = buf.Read(b)
-	fmt.Println(b[:n], err)
+	for _, pkt = range pq {
+		fmt.Println(pkt.seq)
+	}
 
-	buf.Write(ar[:])
+	fmt.Println()
 
-	n, err = buf.Read(b)
-	fmt.Println(b[:n], err)
+	pkt = new(Packet)
+	pkt.seq = 1
+	pq.Push(pkt)
+	
+	for _, pkt = range pq {
+		fmt.Println(pkt.seq)
+	}
 }
