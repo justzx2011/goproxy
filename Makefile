@@ -14,9 +14,11 @@ testlog: logger
 	rm -f *.log
 	./logger --listen :4455 --loglevel INFO &
 
-test: goproxy
-	./goproxy --mode udpsrv --listen :8899 --logfile localhost:4455 --loglevel INFO &
-	./goproxy --mode udpcli --listen :1081 --logfile localhost:4455 --loglevel INFO localhost:8899 &
+server: goproxy
+	./goproxy --mode udpsrv --listen :8899 --loglevel NOTICE
+
+client: goproxy
+	./goproxy --mode udpcli --listen :1081 --loglevel NOTICE localhost:8899
 
 install:
 	install -d $(DESTDIR)/usr/bin/

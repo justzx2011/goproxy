@@ -151,32 +151,47 @@ func (t *Tunnel) proc_ack (pkt *Packet) (err error) {
 	return
 }
 
-func (t *Tunnel) proc_sack(pkt *Packet) (err error) {
+func (t *Tunnel) filter_sendbuf (buf *bytes.Buffer) (sendbuf PacketQueue, err error) {
+	var i int
 	var id int32
-	var sendbuf PacketQueue
-	t.logger.Warning("sack proc", t.sendbuf.String())
-	buf := bytes.NewBuffer(pkt.content)
 
 	err = binary.Read(buf, binary.BigEndian, &id)
-	if err == io.EOF {
-		err = nil
-		break
-	}
+	if err == io.EOF { return t.sendbuf, nil }
 	if err != nil { return }
-	t.logger.Notice(id)
 
-	for _, p := range t.sendbuf {
-		if p.seq == id {
-			put_packet(p)
+	for i = 0; i < len(t.sendbuf); {
+		p := t.sendbuf[i]
+		df := p.seq - id
+		switch {
+		case df == 0:
+			t.logger.Notice("hit id", id)
+			put_packet(t.sendbuf[i])
+			i += 1
+		case df < 0:
+			sendbuf = append(sendbuf, t.sendbuf[i])
+			i += 1
+		}
+
+		if df >= 0 {
 			err = binary.Read(buf, binary.BigEndian, &id)
 			if err == io.EOF {
 				err = nil
 				break
 			}
 			if err != nil { return }
-			t.logger.Notice(id)
-		}else{ sendbuf = append(sendbuf, p) }
+		}
 	}
+	if i < len(t.sendbuf) { sendbuf = append(sendbuf, t.sendbuf[i:]...) }
+	return
+}
+
+func (t *Tunnel) proc_sack(pkt *Packet) (err error) {
+	var id int32
+	t.logger.Warning("sack proc", t.sendbuf.String())
+	buf := bytes.NewBuffer(pkt.content)
+
+	sendbuf, err := t.filter_sendbuf(buf)
+	if err != nil { return }
 	t.sendbuf = sendbuf
 
 	t.sack_count += 1

@@ -191,4 +191,6 @@ func (t *Tunnel) on_quit () {
 	if rand.Intn(100) > 95 {
 		runtime.GC()
 	}
+	for _, p := range t.sendbuf { put_packet(p) }
+	for _, p := range t.recvbuf { put_packet(p) }
 }

@@ -47,6 +47,11 @@ func (tc TunnelConn) Read(b []byte) (n int, err error) {
 func (tc TunnelConn) Write(b []byte) (n int, err error) {
 	var size int
 	var pkt *Packet
+
+	defer func () {
+		if x := recover(); x != nil { err = io.EOF }
+	}()
+	
 	n = 0
 	for i := 0; i < len(b); i += SMSS {
 		if len(b) - i >= SMSS {
@@ -54,18 +59,9 @@ func (tc TunnelConn) Write(b []byte) (n int, err error) {
 		}else{ size = len(b) - i }
 
 		pkt = half_packet(b[i:i+size])
-		if tc.t.status == CLOSED {
-			// tc.t.logger.Debug("write status EOF")
-			return 0, io.EOF
-		}
-		select {
-		case <- tc.t.c_close:
-			// tc.t.logger.Debug("write event EOF")
-			return 0, io.EOF
-		case tc.t.c_write <- pkt: n += size
-		}
-		
-		if err != nil { return }
+		if tc.t.status == CLOSED { return 0, io.EOF }
+		tc.t.c_write <- pkt
+		n += size
 	}
 	return
 }
