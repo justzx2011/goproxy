@@ -68,9 +68,6 @@ func NewTunnel(remote *net.UDPAddr, name string) (t *Tunnel) {
 
 	t.c_recv = make(chan *Packet, 1)
 
-	t.sendseq = 0
-	t.recvseq = 0
-	t.recvack = 0
 	t.sendbuf = make(PacketQueue, 0)
 	t.recvbuf = make(PacketQueue, 0)
 	t.sendwnd = 4*SMSS
@@ -79,17 +76,10 @@ func NewTunnel(remote *net.UDPAddr, name string) (t *Tunnel) {
 	t.rttvar = 200
 	t.cwnd = int32(min(4*SMSS, max(2*SMSS, 4380)))
 	t.ssthresh = WINDOWSIZE
-	t.sack_count = 0
-	t.retrans_count = 0
 
 	t.ticker = time.Tick(TM_TICK * time.Millisecond)
 	t.t_conn = TM_CONNEST
-	t.t_rexmt = 0
-	t.t_persist = 0
 	t.t_keep = TM_KEEPALIVE
-	t.t_finwait = 0
-	t.t_2msl = 0
-	t.t_dack = 0
 
 	t.c_read = make(chan uint8)
 	t.c_write = make(chan *Packet, 1)
