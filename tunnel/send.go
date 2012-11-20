@@ -9,7 +9,8 @@ import (
 )
 
 func (t *Tunnel) send_sack () (err error) {
-	t.logger.Warning("sack send", t.recvbuf.String())
+	// t.logger.Warning("sack send", t.recvbuf.String())
+	t.logger.Notice("sack send")
 	pkt := get_packet()
 	buf := bytes.NewBuffer(pkt.buf[HEADERSIZE:HEADERSIZE])
 	for i, p := range t.recvbuf {
@@ -47,7 +48,7 @@ func (t *Tunnel) send (flag uint8, pkt *Packet) (err error) {
 	t.check_windows_block()
 
 	t.recvack = t.recvseq
-	if t.delayack != nil { t.delayack = nil }
+	if t.t_dack != 0 { t.t_dack = 0 }
 	return
 }
 
@@ -61,14 +62,11 @@ func (t *Tunnel) send_packet(pkt *Packet, retrans bool) (err error) {
 	}
 	if !retrans { return }
 
-	// FIXME: a packet with no retrans maybe unable to recycle
 	pkt.t = time.Now()
 	t.sendbuf.Push(pkt)
 
-	if t.retrans == nil {
-		// WARN: is this right?
-		d := time.Duration(t.rtt + t.rttvar << 2)
-		t.retrans = time.After(d * time.Millisecond)
+	if t.t_rexmt == 0 {
+		t.t_rexmt = int32(t.rtt + t.rttvar << 2)
 	}
 	return
 }
@@ -98,8 +96,7 @@ func (t *Tunnel) on_retrans () (err error) {
 	if len(t.sendbuf) > 0 { inairlen = t.sendseq - t.sendbuf[0].seq }
 	t.ssthresh = max32(inairlen/2, 2*SMSS)
 
-	d := (t.rtt + t.rttvar << 2) * (1 << t.retrans_count)
-	t.retrans = time.After(time.Duration(d) * time.Millisecond)
+	t.t_rexmt = int32(t.rtt + t.rttvar << 2) * (1 << t.retrans_count)
 	return
 }
 

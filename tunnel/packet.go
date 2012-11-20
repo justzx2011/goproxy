@@ -101,6 +101,6 @@ func (p *Packet) Unpack(n int) (err error) {
 
 	if buf.Len() < int(l) { return errors.New("packet broken") }
 	if l > SMSS { return fmt.Errorf("packet too large, %d/%d", l, SMSS) }
-	p.content = buf.Bytes()
+	p.content = buf.Bytes()[:l]
 	return
 }

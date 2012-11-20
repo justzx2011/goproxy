@@ -8,6 +8,8 @@ import (
 	// "io"
 	// "log"
 	// "net"
+	"time"
+	// "reflect"
 	// "./sutils"
 	// "./tunnel"
 )
@@ -56,34 +58,41 @@ import (
 // 	return
 // }
 
-func init () {
-	timer_main()
-}
+// func init () {
+// 	timer_main()
+// }
 
-type Timer struct {
-	c chan uint8
-	ev uint8
-	d time.Duration
-}
+// type Timer struct {
+// 	c chan uint8
+// 	ev uint8
+// 	d time.Duration
+// }
 
-var reg_timer chan *Timer
+// var reg_timer chan *Timer
 
-func timer_main () {
-	var t *Timer
-	for {
-		select {
-		case t = <- reg_timer:
+// func timer_main () {
+// 	var t *Timer
+// 	for {
+// 		select {
+// 		case t = <- reg_timer:
 			
-		}
-	}
-}
+// 		}
+// 	}
+// }
 
-func registe_timer (c chan uint8, ev uint8, d time.Duration) {
+// func registe_timer (c chan uint8, ev uint8, d time.Duration) {
 	
-}
+// }
+
+const TM_TICK = 500 * time.Millisecond
 
 func main () {
+	ticker := time.Tick(TM_TICK)
 
-	
-
+	ti := time.Now()
+	for {
+		<- ticker
+		t := time.Now()
+		fmt.Println("on", t.Sub(ti) * time.Millisecond)
+	}
 }

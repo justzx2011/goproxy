@@ -13,7 +13,7 @@ func (t *Tunnel) on_packet (pkt *Packet) (err error) {
 	var p *Packet
 
 	t.logger.Debug("recv", pkt)
-	t.keepalive = time.After(time.Duration(TM_KEEPALIVE) * time.Second)
+	t.t_keep = TM_KEEPALIVE
 
 	next, err = t.proc_now(pkt)
 	if err != nil { return err }
@@ -38,21 +38,20 @@ func (t *Tunnel) on_packet (pkt *Packet) (err error) {
 		err = t.send_sack()
 	}
 
-	if t.recvseq != t.recvack && t.delayack == nil {
-		t.delayack = time.After(time.Duration(TM_DELAYACK) * time.Millisecond)
+	if t.recvseq != t.recvack && t.t_dack == 0 {
+		t.t_dack = 1
 	}
-
 	return
 }
 
 func (t *Tunnel) proc_now (pkt *Packet) (next bool, err error) {
 	if (pkt.flag & RST) != 0 {
 		t.c_event <- EV_END
-		return false, err
+		return false, nil
 	}
 	if t.status == TIMEWAIT && (pkt.flag & SYN) != 0 {
 		t.c_event <- EV_END
-		return false, err
+		return false, nil
 	}
 	if (pkt.flag & ACK) != 0 {
 		err = t.ack_recv(pkt)
@@ -68,7 +67,7 @@ func (t *Tunnel) ack_recv(pkt *Packet) (err error) {
 	var ti time.Time = time.Now()
 	var p *Packet
 
-	for len(t.sendbuf) != 0 && t.sendbuf[0].seq < pkt.ack {
+	for len(t.sendbuf) != 0 && (t.sendbuf[0].seq - pkt.ack) <= 0 {
 		p = t.sendbuf.Pop()
 
 		delta := int32(ti.Sub(p.t).Nanoseconds() / 1000000) - int32(t.rtt)
@@ -87,13 +86,12 @@ func (t *Tunnel) ack_recv(pkt *Packet) (err error) {
 	}
 
 	t.retrans_count = 0
-	if t.retrans != nil {
+	if t.t_rexmt != 0 {
 		if len(t.sendbuf) == 0 {
-			t.retrans = nil
+			t.t_rexmt = 0
 		}else{
-			d := time.Duration(t.rtt + t.rttvar << 2) 
-			d -= ti.Sub(t.sendbuf[0].t)
-			t.retrans = time.After(d * time.Millisecond)
+			t.t_rexmt = int32(t.rtt + t.rttvar << 2)
+			t.t_rexmt -= int32(ti.Sub(t.sendbuf[0].t) / 1000000)
 		}
 	}
 
@@ -102,7 +100,10 @@ func (t *Tunnel) ack_recv(pkt *Packet) (err error) {
 }
 
 func (t *Tunnel) proc_current (pkt *Packet) (err error) {
-	if t.status == SYNRCVD { t.status = EST }
+	if t.status == SYNRCVD {
+		t.t_conn = 0
+		t.status = EST
+	}
 	if pkt.flag == ACK {
 		err = t.proc_ack(pkt)
 		if err != nil { return }
@@ -139,10 +140,10 @@ func (t *Tunnel) proc_ack (pkt *Packet) (err error) {
 			t.send(FIN, nil)
 		case CLOSING:
 			t.status = TIMEWAIT
-			t.finwait = nil
-			// t.timewait = time.After(2*time.Duration(TM_MSL)*time.Millisecond)
-			t.timewait = time.After(time.Duration(t.rtt << 3 + t.rttvar << 5) * time.Millisecond)
-			for len(t.c_close) < 2 { t.c_close <- EV_CLOSED }
+			t.t_finwait = 0
+			t.t_2msl = 2*TM_MSL
+			// t.t_2msl = int32(t.rtt << 3 + t.rttvar << 5)
+			t.close_nowait()
 		case LASTACK:
 			t.status = CLOSED
 			t.c_event <- EV_END
@@ -187,7 +188,8 @@ func (t *Tunnel) filter_sendbuf (buf *bytes.Buffer) (sendbuf PacketQueue, err er
 
 func (t *Tunnel) proc_sack(pkt *Packet) (err error) {
 	var id int32
-	t.logger.Warning("sack proc", t.sendbuf.String())
+	// t.logger.Warning("sack proc", t.sendbuf.String())
+	t.logger.Notice("sack proc")
 	buf := bytes.NewBuffer(pkt.content)
 
 	sendbuf, err := t.filter_sendbuf(buf)
@@ -223,7 +225,7 @@ func (t *Tunnel) proc_syn (pkt *Packet) (err error) {
 			t.c_event <- EV_END
 			return fmt.Errorf("SYN ACK status wrong, %s", t)
 		}
-		t.connest = nil
+		t.t_conn = 0
 		t.status = EST
 		err = t.send(ACK, nil)
 		if err != nil { return }
@@ -253,10 +255,10 @@ func (t *Tunnel) proc_fin (pkt *Packet) (err error) {
 			t.status = TIMEWAIT
 			err = t.send(ACK, nil)
 			if err != nil { return }
-			t.finwait = nil
-			// t.timewait = time.After(2*time.Duration(TM_MSL)*time.Millisecond)
-			t.timewait = time.After(time.Duration(t.rtt << 3 + t.rttvar << 5) * time.Millisecond)
-			for len(t.c_close) < 2 { t.c_close <- EV_CLOSED }
+			t.t_finwait = 0
+			t.t_2msl = 2*TM_MSL
+			// t.t_2msl = int32(t.rtt << 3 + t.rttvar << 5)
+			t.close_nowait()
 		}else{
 			t.status = CLOSING
 			err = t.send(ACK, nil)
@@ -265,10 +267,10 @@ func (t *Tunnel) proc_fin (pkt *Packet) (err error) {
 		t.status = TIMEWAIT
 		err = t.send(ACK, nil)
 		if err != nil { return }
-		t.finwait = nil
-		// t.timewait = time.After(2*time.Duration(TM_MSL)*time.Millisecond)
-		t.timewait = time.After(time.Duration(t.rtt << 3 + t.rttvar << 5) * time.Millisecond)
-		for len(t.c_close) < 2 { t.c_close <- EV_CLOSED }
+		t.t_finwait = 0
+		t.t_2msl = 2*TM_MSL
+		// t.t_2msl = int32(t.rtt << 3 + t.rttvar << 5)
+		t.close_nowait()
 	default:
 		t.send(RST, nil)
 		t.c_event <- EV_END

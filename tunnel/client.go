@@ -8,9 +8,11 @@ import (
 )
 
 var logcli *sutils.Logger
+var connlog map[string]*Tunnel
 
 func init () {
 	logcli = sutils.NewLogger("client")
+	connlog = make(map[string]*Tunnel)
 }
 
 type Client struct {
@@ -23,8 +25,9 @@ func (c *Client) sender () {
 	var err error
 	var n int
 	var db *SendBlock
+	defer func () { c.t.c_event <- EV_END }()
 
-	for {
+	for !c.t.isquit() {
 		db = <- c.t.c_send
 
 		n, err = db.pkt.Pack()
@@ -34,14 +37,12 @@ func (c *Client) sender () {
 		}
 
 		_, err = c.conn.Write(db.pkt.buf[:n])
-		if _, ok := err.(*net.OpError); ok {
-			continue
-			// break
-		}
 		if err != nil {
+			if strings.HasSuffix(err.Error(), "use of closed network connection") {
+				break
+			}
 			logcli.Err(err)
 			continue
-			// break
 		}
 	}
 }
@@ -50,24 +51,26 @@ func (c *Client) recver () {
 	var err error
 	var n int
 	var pkt *Packet
+	defer func () { c.t.c_event <- EV_END }()
 
-	for {
+	for !c.t.isquit() {
 		pkt = get_packet()
+
 		n, err = c.conn.Read(pkt.buf[:])
-		if _, ok := err.(*net.OpError); ok {
+		if err != nil {
+			if !strings.HasSuffix(err.Error(), "use of closed network connection") {
+				logcli.Err(err)
+			}
 			put_packet(pkt)
-			// break
 			continue
 		}
+
+		err = pkt.Unpack(n)
 		if err != nil {
 			put_packet(pkt)
 			logcli.Err(err)
 			continue
-			// break
 		}
-
-		err = pkt.Unpack(n)
-		if err != nil { continue }
 		c.t.c_recv <- pkt
 	}
 }
@@ -90,6 +93,8 @@ func DialTunnel(addr string) (tc net.Conn, err error) {
 		logcli.Info("close tunnel", localaddr)
 		err := conn.Close()
 		if err != nil { logcli.Err(err) }
+		delete(connlog, localaddr.String())
+		fmt.Println(connlog)
 	}
 
 	c := &Client{t, conn, name}
@@ -99,5 +104,6 @@ func DialTunnel(addr string) (tc net.Conn, err error) {
 	t.c_event <- EV_CONNECT
 	<- t.c_connect
 	logcli.Info("create tunnel", localaddr)
+	connlog[localaddr.String()] = t
 	return NewTunnelConn(t), nil
 }

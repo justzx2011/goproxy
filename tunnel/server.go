@@ -18,7 +18,6 @@ type Server struct {
 	dispatcher map[string]*Tunnel
 	handler func (net.Conn) (error)
 	c_send chan *SendBlock
-	// c_sendfree chan *SendBlock
 }
 
 func NewServer(conn *net.UDPConn) (srv *Server) {
@@ -26,7 +25,6 @@ func NewServer(conn *net.UDPConn) (srv *Server) {
 	srv.conn = conn
 	srv.dispatcher = make(map[string]*Tunnel)
 	srv.c_send = make(chan *SendBlock, 1)
-	// srv.c_sendfree = make(chan *SendBlock, 10)
 	go srv.sender()
 	return
 }
@@ -65,10 +63,10 @@ func (srv *Server) get_tunnel(remote *net.UDPAddr, pkt *Packet) (t *Tunnel, err 
 
 	t = NewTunnel(remote, fmt.Sprintf("%d_srv", remote.Port))
 	t.c_send = srv.c_send
-	// t.c_sendfree = srv.c_sendfree
 	t.onclose = func () {
 		logsrv.Info("close tunnel", remotekey)
 		delete(srv.dispatcher, remotekey)
+		fmt.Println(srv.dispatcher)
 	}
 
 	srv.dispatcher[remotekey] = t

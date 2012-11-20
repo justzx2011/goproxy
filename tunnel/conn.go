@@ -75,7 +75,7 @@ func (tc TunnelConn) Write(b []byte) (n int, err error) {
 }
 
 func (tc TunnelConn) Close() (err error) {
-	if tc.t.status == CLOSED { return }
+	if tc.t.isquit() { return }
 	// tc.t.logger.Debug("closing")
 	if tc.t.status == EST { tc.t.c_event <- EV_CLOSE }
 	<- tc.t.c_close

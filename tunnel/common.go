@@ -18,11 +18,12 @@ const (
 )
 
 const (
-	TM_MSL = 30000 // ms
-	TM_FINWAIT = 10000 // ms
-	TM_KEEPALIVE = 3600 // s
-	TM_DELAYACK = 200 // ms
-	TM_CONNEST = 75 // s
+	TM_TICK = 50
+	TM_MSL = 30000
+	TM_DELAYACK = 50
+	TM_CONNEST = 75000
+	TM_KEEPALIVE = 3600000
+	TM_FINWAIT = 10000
 )
 
 const (
