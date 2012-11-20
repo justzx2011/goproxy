@@ -71,7 +71,7 @@ func (t *Tunnel) ack_recv(pkt *Packet) (err error) {
 	for len(t.sendbuf) != 0 && t.sendbuf[0].seq < pkt.ack {
 		p = t.sendbuf.Pop()
 
-		delta := int32(ti.Sub(p.t).Nanoseconds() / 1000) - int32(t.rtt)
+		delta := int32(ti.Sub(p.t).Nanoseconds() / 1000000) - int32(t.rtt)
 		t.rtt = uint32(int32(t.rtt) + delta >> 3)
 		t.rttvar = uint32(int32(t.rttvar) + (abs(delta) - int32(t.rttvar)) >> 2)
 
@@ -93,7 +93,7 @@ func (t *Tunnel) ack_recv(pkt *Packet) (err error) {
 		}else{
 			d := time.Duration(t.rtt + t.rttvar << 2) 
 			d -= ti.Sub(t.sendbuf[0].t)
-			t.retrans = time.After(d * time.Microsecond)
+			t.retrans = time.After(d * time.Millisecond)
 		}
 	}
 
@@ -141,7 +141,7 @@ func (t *Tunnel) proc_ack (pkt *Packet) (err error) {
 			t.status = TIMEWAIT
 			t.finwait = nil
 			// t.timewait = time.After(2*time.Duration(TM_MSL)*time.Millisecond)
-			t.timewait = time.After(time.Duration(t.rtt << 3 + t.rttvar << 5))
+			t.timewait = time.After(time.Duration(t.rtt << 3 + t.rttvar << 5) * time.Millisecond)
 			for len(t.c_close) < 2 { t.c_close <- EV_CLOSED }
 		case LASTACK:
 			t.status = CLOSED
@@ -164,7 +164,7 @@ func (t *Tunnel) filter_sendbuf (buf *bytes.Buffer) (sendbuf PacketQueue, err er
 		df := p.seq - id
 		switch {
 		case df == 0:
-			t.logger.Notice("hit id", id)
+			// t.logger.Notice("hit id", id)
 			put_packet(t.sendbuf[i])
 			i += 1
 		case df < 0:
@@ -255,7 +255,7 @@ func (t *Tunnel) proc_fin (pkt *Packet) (err error) {
 			if err != nil { return }
 			t.finwait = nil
 			// t.timewait = time.After(2*time.Duration(TM_MSL)*time.Millisecond)
-			t.timewait = time.After(time.Duration(t.rtt << 3 + t.rttvar << 5))
+			t.timewait = time.After(time.Duration(t.rtt << 3 + t.rttvar << 5) * time.Millisecond)
 			for len(t.c_close) < 2 { t.c_close <- EV_CLOSED }
 		}else{
 			t.status = CLOSING
@@ -267,7 +267,7 @@ func (t *Tunnel) proc_fin (pkt *Packet) (err error) {
 		if err != nil { return }
 		t.finwait = nil
 		// t.timewait = time.After(2*time.Duration(TM_MSL)*time.Millisecond)
-		t.timewait = time.After(time.Duration(t.rtt << 3 + t.rttvar << 5))
+		t.timewait = time.After(time.Duration(t.rtt << 3 + t.rttvar << 5) * time.Millisecond)
 		for len(t.c_close) < 2 { t.c_close <- EV_CLOSED }
 	default:
 		t.send(RST, nil)

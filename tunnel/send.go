@@ -68,7 +68,7 @@ func (t *Tunnel) send_packet(pkt *Packet, retrans bool) (err error) {
 	if t.retrans == nil {
 		// WARN: is this right?
 		d := time.Duration(t.rtt + t.rttvar << 2)
-		t.retrans = time.After(d * time.Microsecond)
+		t.retrans = time.After(d * time.Millisecond)
 	}
 	return
 }
@@ -99,7 +99,7 @@ func (t *Tunnel) on_retrans () (err error) {
 	t.ssthresh = max32(inairlen/2, 2*SMSS)
 
 	d := (t.rtt + t.rttvar << 2) * (1 << t.retrans_count)
-	t.retrans = time.After(time.Duration(d) * time.Microsecond)
+	t.retrans = time.After(time.Duration(d) * time.Millisecond)
 	return
 }
 

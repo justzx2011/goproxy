@@ -35,11 +35,13 @@ func (c *Client) sender () {
 
 		_, err = c.conn.Write(db.pkt.buf[:n])
 		if _, ok := err.(*net.OpError); ok {
-			break
+			continue
+			// break
 		}
 		if err != nil {
 			logcli.Err(err)
-			break
+			continue
+			// break
 		}
 	}
 }
@@ -54,12 +56,14 @@ func (c *Client) recver () {
 		n, err = c.conn.Read(pkt.buf[:])
 		if _, ok := err.(*net.OpError); ok {
 			put_packet(pkt)
-			break
+			// break
+			continue
 		}
 		if err != nil {
 			put_packet(pkt)
 			logcli.Err(err)
-			break
+			continue
+			// break
 		}
 
 		err = pkt.Unpack(n)

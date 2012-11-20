@@ -20,6 +20,10 @@ func (tc TunnelConn) Read(b []byte) (n int, err error) {
 	var ok bool
 	var l int
 
+	defer func () {
+		if x := recover(); x != nil { err = io.EOF }
+	}()
+
 	for {
 		tc.t.readlck.Lock()
 		l := tc.t.readbuf.Len()
@@ -34,6 +38,10 @@ func (tc TunnelConn) Read(b []byte) (n int, err error) {
 	n, err = tc.t.readbuf.Read(b)
 	tc.t.readlck.Unlock()
 	if err != nil { return }
+
+	if l >= RESTARTACK && (l - n) < RESTARTACK {
+		tc.t.c_event <- EV_READ
+	}
 
 	if l > n && tc.t.status == EST {
 		select {

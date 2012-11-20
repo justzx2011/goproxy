@@ -15,10 +15,10 @@ testlog: logger
 	./logger --listen :4455 --loglevel INFO &
 
 server: goproxy
-	./goproxy --mode udpsrv --listen :8899 --loglevel NOTICE
+	sudo bash -c 'ulimit -n 8192; ./goproxy --mode udpsrv --listen :8899 --loglevel NOTICE'
 
 client: goproxy
-	./goproxy --mode udpcli --listen :1081 --loglevel NOTICE localhost:8899
+	sudo bash -c 'ulimit -n 8192; ./goproxy --mode udpcli --listen :1081 --loglevel NOTICE localhost:8899'
 
 install:
 	install -d $(DESTDIR)/usr/bin/

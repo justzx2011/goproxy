@@ -76,8 +76,8 @@ func NewTunnel(remote *net.UDPAddr, name string) (t *Tunnel) {
 	t.recvbuf = make(PacketQueue, 0)
 	t.sendwnd = 4*SMSS
 
-	t.rtt = 200000
-	t.rttvar = 200000
+	t.rtt = 200
+	t.rttvar = 200
 	t.cwnd = int32(min(4*SMSS, max(2*SMSS, 4380)))
 	t.ssthresh = WINDOWSIZE
 	t.sack_count = 0
@@ -87,7 +87,7 @@ func NewTunnel(remote *net.UDPAddr, name string) (t *Tunnel) {
 	t.c_read = make(chan uint8)
 	t.c_write = make(chan *Packet, 1)
 	t.c_wrbak = t.c_write
-	t.c_event = make(chan uint8, 1)
+	t.c_event = make(chan uint8, 3)
 	t.c_connect = make(chan uint8, 1)
 	t.c_close = make(chan uint8, 3)
 
@@ -185,7 +185,7 @@ func (t *Tunnel) on_quit () {
 	t.logger.Info(t.DumpCounter())
 	t.status = CLOSED
 	close(t.c_read)
-	for len(t.c_close) < 2 { t.c_close <- EV_CLOSED }
+	close(t.c_close)
 	close(t.c_wrbak)
 	if t.onclose != nil { t.onclose() }
 	if rand.Intn(100) > 95 {

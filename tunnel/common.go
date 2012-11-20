@@ -7,18 +7,17 @@ import (
 )
 
 const (
-	DROPFLAG = true
+	DROPFLAG = false
 	MAXPARELLELCONN = 800
 	SMSS = 1024 // Sender Maximum Segment Size
 	WINDOWSIZE = 65535
 	READBUFSIZE = 100
 	RESTARTACK = 3*16*1024
-	MAXRESEND = 5
+	MAXRESEND = 7
 	RETRANS_SACKCOUNT = 2
 )
 
 const (
-	TM_CLIMSL = 2000 // ms
 	TM_MSL = 30000 // ms
 	TM_FINWAIT = 10000 // ms
 	TM_KEEPALIVE = 3600 // s

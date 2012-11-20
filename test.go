@@ -2,7 +2,7 @@ package main
 
 import (
 	// "bytes"
-	"errors"
+	// "errors"
 	"fmt"
 	// "encoding/binary"
 	// "io"
@@ -56,20 +56,34 @@ import (
 // 	return
 // }
 
-func f1(){
-	// panic("def")
+func init () {
+	timer_main()
 }
 
-func f2() (err error) {
-	defer func () {
-		if x := recover(); x != nil {
-			err = errors.New(x.(string))
+type Timer struct {
+	c chan uint8
+	ev uint8
+	d time.Duration
+}
+
+var reg_timer chan *Timer
+
+func timer_main () {
+	var t *Timer
+	for {
+		select {
+		case t = <- reg_timer:
+			
 		}
-	}()
-	f1()
-	return errors.New("abc")
+	}
+}
+
+func registe_timer (c chan uint8, ev uint8, d time.Duration) {
+	
 }
 
 func main () {
-	fmt.Println(f2())
+
+	
+
 }
