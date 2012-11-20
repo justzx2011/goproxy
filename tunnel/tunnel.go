@@ -93,8 +93,8 @@ func NewTunnel(remote *net.UDPAddr, name string) (t *Tunnel) {
 }
 
 func (t Tunnel) String () string {
-	return "st: " + DumpStatus(t.status)
-	// return t.Dump()
+	// return "st: " + DumpStatus(t.status)
+	return t.Dump()
 }
 
 func (t *Tunnel) Dump() string {
@@ -125,12 +125,16 @@ QUIT:
 			if ev == EV_END { break QUIT }
 			t.logger.Debug("on event", ev)
 			err = t.on_event(ev)
+			t.logger.Debug("loop", t.Dump())
 		case <- t.ticker: err = t.on_timer()
-		case pkt = <- t.c_recv: err = t.on_packet(pkt)
-		case pkt = <- t.c_write: err = t.send(0, pkt)
+		case pkt = <- t.c_recv:
+			err = t.on_packet(pkt)
+			t.logger.Debug("loop", t.Dump())
+		case pkt = <- t.c_write:
+			err = t.send(0, pkt)
+			t.logger.Debug("loop", t.Dump())
 		}
 		if err != nil { t.logger.Err(err) }
-		t.logger.Debug(t.Dump())
 		// t.logger.Debug(t.DumpCounter())
 	}
 }
@@ -157,11 +161,11 @@ func (t *Tunnel) on_event (ev uint8) (err error) {
 	return errors.New("unknown event")
 }
 
-func tick_timer(t int32) (next int32, trigger bool) {
-	trigger = t != 0 && t <= TM_TICK
-	next = t - TM_TICK
-	if next < 0 { next = 0 }
-	return
+func tick_timer(t int32) (int32, bool) {
+	if t == 0 { return 0, false }
+	next := t - TM_TICK
+	if next <= 0 { return 0, true }
+	return next, false
 }
 
 func (t *Tunnel) on_timer () (err error) {
@@ -177,14 +181,14 @@ func (t *Tunnel) on_timer () (err error) {
 
 	t.t_rexmt, trigger = tick_timer(t.t_rexmt)
 	if trigger {
-		t.logger.Notice("timer retrans")
+		t.logger.Debug("timer retrans")
 		err = t.on_retrans()
 		if err != nil { return }
 	}
 
 	t.t_persist, trigger = tick_timer(t.t_persist)
 	if trigger {
-		t.logger.Notice("timer persist")
+		t.logger.Debug("timer persist")
 		// TODO: 持续定时器
 		// err = t.on_retrans()
 	}

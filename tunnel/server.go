@@ -38,12 +38,12 @@ func (srv *Server) sender () {
 
 		n, err = db.pkt.Pack()
 		if err != nil {
-			logsrv.Err(err)
+			logsrv.Err("Pack", err)
 			continue
 		}
 
 		_, err = srv.conn.WriteToUDP(db.pkt.buf[:n], db.remote)
-		if err != nil { logsrv.Err(err) }
+		if err != nil { logsrv.Err("WriteToUDP", err) }
 	}
 }
 
@@ -66,7 +66,7 @@ func (srv *Server) get_tunnel(remote *net.UDPAddr, pkt *Packet) (t *Tunnel, err 
 	t.onclose = func () {
 		logsrv.Info("close tunnel", remotekey)
 		delete(srv.dispatcher, remotekey)
-		fmt.Println(srv.dispatcher)
+		logsrv.Debug(srv.dispatcher)
 	}
 
 	srv.dispatcher[remotekey] = t
@@ -95,19 +95,19 @@ func UdpServer (addr string, handler func (net.Conn) (error)) (err error) {
 		n, remote, err = conn.ReadFromUDP(pkt.buf[:])
 		if err != nil {
 			put_packet(pkt)
-			logsrv.Err(err)
+			logsrv.Err("ReadFromUDP", err)
 			continue
 		}
 
 		err = pkt.Unpack(n)
 		if err != nil {
-			logsrv.Err(err)
+			logsrv.Err("Unpack", err)
 			continue
 		}
 
 		t, err = srv.get_tunnel(remote, pkt)
 		if err != nil {
-			logsrv.Err(err)
+			logsrv.Err("get tunnel", err)
 			continue
 		}
 		if t == nil {

@@ -32,7 +32,7 @@ func (c *Client) sender () {
 
 		n, err = db.pkt.Pack()
 		if err != nil {
-			logcli.Err(err)
+			logcli.Err("Pack", err)
 			continue
 		}
 
@@ -41,7 +41,7 @@ func (c *Client) sender () {
 			if strings.HasSuffix(err.Error(), "use of closed network connection") {
 				break
 			}
-			logcli.Err(err)
+			logcli.Err("Write Net", err)
 			continue
 		}
 	}
@@ -59,7 +59,7 @@ func (c *Client) recver () {
 		n, err = c.conn.Read(pkt.buf[:])
 		if err != nil {
 			if !strings.HasSuffix(err.Error(), "use of closed network connection") {
-				logcli.Err(err)
+				logcli.Err("Read Net", err)
 			}
 			put_packet(pkt)
 			continue
@@ -68,7 +68,7 @@ func (c *Client) recver () {
 		err = pkt.Unpack(n)
 		if err != nil {
 			put_packet(pkt)
-			logcli.Err(err)
+			logcli.Err("Unpack", err)
 			continue
 		}
 		c.t.c_recv <- pkt
@@ -90,10 +90,9 @@ func DialTunnel(addr string) (tc net.Conn, err error) {
 	t.c_send = make(chan *SendBlock, 1)
 	t.onclose = func () {
 		logcli.Info("close tunnel", localaddr)
-		err := conn.Close()
-		if err != nil { logcli.Err(err) }
+		conn.Close()
 		delete(connlog, localaddr.String())
-		fmt.Println(connlog)
+		logcli.Debug(connlog)
 	}
 
 	c := &Client{t, conn, name}

@@ -18,7 +18,7 @@ const (
 )
 
 const (
-	TM_TICK = 50
+	TM_TICK = 100
 	TM_MSL = 30000
 	TM_CONNEST = 75000
 	TM_KEEPALIVE = 3600000

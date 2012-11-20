@@ -22,6 +22,7 @@ func (t *Tunnel) on_packet (pkt *Packet) (err error) {
 	switch{
 	case (pkt.seq - t.recvseq) < 0:
 		put_packet(pkt)
+		t.send(ACK, nil)
 		return
 	case (pkt.seq - t.recvseq) == 0:
 		for p = pkt; ; {
@@ -34,8 +35,17 @@ func (t *Tunnel) on_packet (pkt *Packet) (err error) {
 			p = t.recvbuf.Pop()
 		}
 	case (pkt.seq - t.recvseq) > 0:
-		t.recvbuf.Push(pkt)
+		switch {
+		case (pkt.flag & SACK) != 0:
+			err = t.proc_sack(pkt)
+			if err != nil { return }
+			put_packet(pkt)
+		case (len(pkt.content) > 0) || (pkt.flag != ACK):
+			t.recvbuf.Push(pkt)
+		default: put_packet(pkt)
+		}
 		err = t.send_sack()
+		if err != nil { return }
 	}
 
 	if t.recvseq != t.recvack && t.t_dack == 0 {
@@ -67,7 +77,7 @@ func (t *Tunnel) ack_recv(pkt *Packet) (err error) {
 	var ti time.Time = time.Now()
 	var p *Packet
 
-	for len(t.sendbuf) != 0 && (t.sendbuf[0].seq - pkt.ack) <= 0 {
+	for len(t.sendbuf) != 0 && (t.sendbuf[0].seq - pkt.ack) < 0 {
 		p = t.sendbuf.Pop()
 
 		delta := int32(ti.Sub(p.t).Nanoseconds() / 1000000) - int32(t.rtt)
@@ -121,7 +131,7 @@ func (t *Tunnel) proc_current (pkt *Packet) (err error) {
 		case t.c_read <- 1:
 		default:
 		}
-	case (pkt.flag != ACK): t.recvseq += 1
+	case pkt.flag != ACK: t.recvseq += 1
 	default: return
 	}
 
@@ -189,7 +199,7 @@ func (t *Tunnel) filter_sendbuf (buf *bytes.Buffer) (sendbuf PacketQueue, err er
 func (t *Tunnel) proc_sack(pkt *Packet) (err error) {
 	var id int32
 	// t.logger.Warning("sack proc", t.sendbuf.String())
-	t.logger.Notice("sack proc")
+	t.logger.Debug("sack proc")
 	buf := bytes.NewBuffer(pkt.content)
 
 	sendbuf, err := t.filter_sendbuf(buf)
@@ -199,7 +209,7 @@ func (t *Tunnel) proc_sack(pkt *Packet) (err error) {
 	t.sack_count += 1
 	switch {
 	case t.sack_count == RETRANS_SACKCOUNT:
-		t.logger.Warning("first sack resend")
+		t.logger.Debug("first sack resend")
 
 		inairlen := int32(0)
 		if len(t.sendbuf) > 0 { inairlen = t.sendseq - t.sendbuf[0].seq }
@@ -208,7 +218,7 @@ func (t *Tunnel) proc_sack(pkt *Packet) (err error) {
 		t.resend(id, true)
 		t.cwnd = t.ssthresh + 3*SMSS
 	case t.sack_count > RETRANS_SACKCOUNT:
-		t.logger.Warning("sack resend")
+		t.logger.Debug("sack resend")
 
 		t.resend(id, true)
 		t.cwnd += SMSS

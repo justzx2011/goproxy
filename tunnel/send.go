@@ -10,7 +10,7 @@ import (
 
 func (t *Tunnel) send_sack () (err error) {
 	// t.logger.Warning("sack send", t.recvbuf.String())
-	t.logger.Notice("sack send")
+	t.logger.Debug("sack send")
 	pkt := get_packet()
 	buf := bytes.NewBuffer(pkt.buf[HEADERSIZE:HEADERSIZE])
 	for i, p := range t.recvbuf {
@@ -38,7 +38,9 @@ func (t *Tunnel) send (flag uint8, pkt *Packet) (err error) {
 	retrans := (flag & SACK) == 0 && (flag != ACK || size != 0)
 	err = t.send_packet(pkt, retrans)
 	if err != nil { return }
-	if !retrans { put_packet(pkt) }
+	// todo: 不加入sendbuf的pkt的回收
+	// 不能直接回收，会导致发送时有问题
+	// if !retrans { put_packet(pkt) }
 
 	switch {
 	case (flag & SACK) != 0:
@@ -105,10 +107,10 @@ func (t *Tunnel) check_windows_block () {
 	if len(t.sendbuf) > 0 { inairlen = t.sendseq - t.sendbuf[0].seq }
 	switch {
 	case (inairlen >= t.sendwnd) || (inairlen >= t.cwnd):
-		t.logger.Notice("blocking,", inairlen, t.sendwnd, t.cwnd, t.ssthresh)
+		t.logger.Debug("blocking,", inairlen, t.sendwnd, t.cwnd, t.ssthresh)
 		t.c_write = nil
 	case t.status == EST && t.c_write == nil:
-		t.logger.Notice("restart,", inairlen, t.sendwnd, t.cwnd, t.ssthresh)
+		t.logger.Debug("restart,", inairlen, t.sendwnd, t.cwnd, t.ssthresh)
 		t.c_write = t.c_wrbak
 	}
 }

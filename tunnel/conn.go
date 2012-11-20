@@ -66,7 +66,7 @@ func (tc TunnelConn) Write(b []byte) (n int, err error) {
 			size = SMSS
 		}else{ size = len(b) - i }
 
-		pkt = half_packet(b[i:i+size])
+		size, pkt = half_packet(b[i:i+size])
 		if tc.t.status == CLOSED { return 0, io.EOF }
 		tc.t.c_write <- pkt
 		n += size

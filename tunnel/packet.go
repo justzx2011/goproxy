@@ -5,10 +5,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"time"
 )
 
-const HEADERSIZE = 13
+const HEADERSIZE = 17
 
 var c_pktfree chan *Packet
 
@@ -36,17 +37,18 @@ type Packet struct {
 	window uint16
 	seq int32
 	ack int32
+	crc uint32
 	content []byte
 
 	buf [SMSS+200]byte
 	t time.Time
 }
 
-func half_packet(content []byte) (p *Packet) {
+func half_packet(content []byte) (n int, p *Packet) {
 	p = get_packet()
-	n := copy(p.buf[HEADERSIZE:], content)
+	n = copy(p.buf[HEADERSIZE:], content)
 	p.content = p.buf[HEADERSIZE:HEADERSIZE+n]
-	return p
+	return
 }
 
 func (p *Packet) read_status (t *Tunnel) {
@@ -58,6 +60,7 @@ func (p *Packet) read_status (t *Tunnel) {
 	}else{ p.window = 0 }
 	p.seq = t.sendseq
 	p.ack = t.recvseq
+	p.crc = crc32.ChecksumIEEE(p.content)
 }
 
 func (p *Packet) String() string {
@@ -79,6 +82,8 @@ func (p *Packet) Pack() (n int, err error) {
 	if err != nil { return }
 	err = binary.Write(buf, binary.BigEndian, &p.ack)
 	if err != nil { return }
+	err = binary.Write(buf, binary.BigEndian, &p.crc)
+	if err != nil { return }
 	err = binary.Write(buf, binary.BigEndian, uint16(len(p.content)))
 	if err != nil { return }
 	return HEADERSIZE+len(p.content), err
@@ -96,11 +101,18 @@ func (p *Packet) Unpack(n int) (err error) {
 	if err != nil { return }
 	err = binary.Read(buf, binary.BigEndian, &p.ack)
 	if err != nil { return }
+	err = binary.Read(buf, binary.BigEndian, &p.crc)
+	if err != nil { return }
 	err = binary.Read(buf, binary.BigEndian, &l)
 	if err != nil { return }
 
-	if buf.Len() < int(l) { return errors.New("packet broken") }
 	if l > SMSS { return fmt.Errorf("packet too large, %d/%d", l, SMSS) }
-	p.content = buf.Bytes()[:l]
+	if buf.Len() != int(l) { return errors.New("packet broken") }
+	p.content = buf.Bytes()
+
+	if p.crc != crc32.ChecksumIEEE(p.content) {
+		return fmt.Errorf("crc32 fault %x/%x %s",
+			p.crc, crc32.ChecksumIEEE(p.content), p.String())
+	}
 	return
 }

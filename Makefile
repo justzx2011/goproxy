@@ -4,7 +4,10 @@
 ## Version: $Id: Makefile,v 0.0 2012/11/02 06:18:14 shell Exp $
 ## Keywords: 
 ## X-URL: 
-TARGET=goproxy logger
+TARGET=goproxy
+DEBUGOPT=--loglevel WARNING
+# DEBUGSRV=--logfile server.log
+# DEBUGCLI=--logfile client.log
 
 all: clean build
 
@@ -12,13 +15,13 @@ build: $(TARGET)
 
 testlog: logger
 	rm -f *.log
-	./logger --listen :4455 --loglevel INFO &
+	./logger --listen :4455 --loglevel DEBUG
 
 server: goproxy
-	sudo bash -c 'ulimit -n 8192; ./goproxy --mode udpsrv --listen :8899 --loglevel NOTICE'
+	./goproxy --mode udpsrv --listen :8899 $(DEBUGOPT) $(DEBUGSRV)
 
 client: goproxy
-	sudo bash -c 'ulimit -n 8192; ./goproxy --mode udpcli --listen :1081 --loglevel NOTICE localhost:8899'
+	./goproxy --mode udpcli --listen :1081 $(DEBUGOPT) $(DEBUGCLI) localhost:8899
 
 install:
 	install -d $(DESTDIR)/usr/bin/
