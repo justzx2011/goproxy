@@ -51,7 +51,8 @@ func half_packet(content []byte) (n int, p *Packet) {
 	return
 }
 
-func (p *Packet) read_status (t *Tunnel) {
+func (p *Packet) read_status (t *Tunnel, flag uint8) {
+	p.flag = flag
 	t.readlck.Lock()
 	l := t.readbuf.Len()
 	t.readlck.Unlock()

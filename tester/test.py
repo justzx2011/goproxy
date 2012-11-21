@@ -10,7 +10,7 @@ from urlparse import urlparse
 from gevent import socket, pool
 import http, socks
 
-c = socks.socks5(('debox', 1081))(socket.socket)
+c = socks.socks5(('localhost', 1081))(socket.socket)
 # c = socket.socket
 def download(uri, tmp=False):
     url = urlparse(uri)
@@ -25,9 +25,12 @@ def download(uri, tmp=False):
     req.set_header("Host", url.hostname)
     res = http.http_client(req, (hostname, port), c)
     if not tmp: return res.read_body()
-    for d in res.read_chunk(res.stream): pass
+    cnt = 0
+    for d in res.read_chunk(res.stream):
+        cnt += len(d)
+        sys.stdout.write('%d\t\r' % cnt)
 
-def doloop(url, d):
+def doloop(url, d, loops):
     counter = [0, 0, 0, 0]
     def writest(ch):
         sys.stdout.write(
@@ -46,7 +49,7 @@ def doloop(url, d):
         writest('\r')
 
     p = pool.Pool(200)
-    for i in xrange(20000): p.spawn(tester)
+    for i in xrange(loops): p.spawn(tester)
     p.join()
     writest('\n')
 
@@ -63,12 +66,12 @@ def initlog(lv, logfile=None):
 
 def main():
     initlog(logging.INFO)
-    optlist, args = getopt(sys.argv[1:], "ot")
+    optlist, args = getopt(sys.argv[1:], "b:ot")
     optdict = dict(optlist)
-    if not args: url = 'http://debox/'
+    if not args: url = 'http://localhost/'
     else: url = args[0]
     if '-o' in optdict: print download(url)
     elif '-t' in optdict: print download(url, True)
-    else: doloop(url, download(url))
+    elif '-b': doloop(url, download(url), int(optdict['-b']))
 
 if __name__ == '__main__': main()

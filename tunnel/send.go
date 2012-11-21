@@ -26,6 +26,9 @@ func (t *Tunnel) send_sack () (err error) {
 
 func (t *Tunnel) send (flag uint8, pkt *Packet) (err error) {
 	send_count += 1
+
+	// todo: status djuge
+
 	if t.status != EST && flag == 0{
 		return fmt.Errorf("can't send data, %s, pkt: %s", t, DumpFlag(flag))
 	}
@@ -35,33 +38,25 @@ func (t *Tunnel) send (flag uint8, pkt *Packet) (err error) {
 		pkt.content = pkt.buf[HEADERSIZE:HEADERSIZE]
 	}
 	if t.recvack != t.recvseq { flag |= ACK }
-	pkt.flag = flag
-	pkt.read_status(t)
+	pkt.read_status(t, flag)
 	size := len(pkt.content)
 
-	retrans := (flag & SACK) == 0 && (flag != ACK || size != 0)
 	t.send_packet(pkt)
+	t.recvack = t.recvseq
+	if t.t_dack != 0 { t.t_dack = 0 }
 
 	// todo: 不加入sendbuf的pkt的回收
 	// 不能直接回收，会导致发送时有问题
-	// if !retrans { put_packet(pkt) }
-	if retrans {
-		pkt.t = time.Now()
-		t.sendbuf.Push(pkt)
-
-		if t.t_rexmt == 0 {
-			t.t_rexmt = int32(t.rtt + t.rttvar << 2)
-		}
-	}
-	
-	switch {
-	case (flag & SACK) != 0:
+	switch { // 不参与seq递增的包，也不需要retrans
+	case (flag & SACK) != 0: return
 	case size > 0: t.sendseq += int32(size)
 	case flag != ACK: t.sendseq += 1
+	default: return
 	}
 
-	t.recvack = t.recvseq
-	if t.t_dack != 0 { t.t_dack = 0 }
+	pkt.t = time.Now()
+	t.sendbuf.Push(pkt)
+	if t.t_rexmt == 0 { t.t_rexmt = int32(t.rtt + t.rttvar << 2) }
 	return
 }
 

@@ -8,62 +8,58 @@ import (
 	"time"
 )
 
-func (t *Tunnel) on_packet (pkt *Packet) (err error) {
+func (t *Tunnel) on_packet (pkt *Packet) (recycly bool, err error) {
 	var p *Packet
 
 	t.logger.Debug("recv", pkt)
 	t.t_keep = TM_KEEPALIVE
-	t.sendwnd = int32(pkt.window)
 
 	if (pkt.flag & RST) != 0 {
 		t.c_event <- EV_END
-		return
-	}
-	if t.status == TIMEWAIT && (pkt.flag & SYN) != 0 {
-		t.c_event <- EV_END
-		return
+		return true, nil
 	}
 
-	if (pkt.flag & ACK) != 0 {
-		ti := time.Now()
+	diff := (pkt.seq - t.recvseq)
+	if diff >= 0 {
+		if (pkt.flag & ACK) != 0 { t.proc_ack(pkt) }
+		if (pkt.flag & SACK) != 0 { return true, t.proc_sack(pkt) }
+	}
 
-		for len(t.sendbuf) != 0 && (t.sendbuf[0].seq - pkt.ack) < 0 {
-			p = t.sendbuf.Pop()
-
-			delta := int32(ti.Sub(p.t).Nanoseconds() / 1000000) - int32(t.rtt)
-			t.rtt = uint32(int32(t.rtt) + delta >> 3)
-			t.rttvar = uint32(int32(t.rttvar) + (abs(delta) - int32(t.rttvar)) >> 2)
-
-			put_packet(p)
+	switch t.status {
+	case TIMEWAIT:
+		if (pkt.flag & SYN) != 0 { t.c_event <- EV_END }
+		return true, nil
+	case SYNRCVD:
+		t.t_conn = 0
+		t.status = EST
+	case FINWAIT1:
+		if pkt.flag == ACK && pkt.ack == t.sendseq {
+			t.status = FINWAIT2
+			t.send(FIN, nil)
+			return true, nil
 		}
-
-		switch {
-		case t.sack_count >= 2 || t.retrans_count != 0:
-			t.cwnd = t.ssthresh
-		case t.cwnd <= t.ssthresh: t.cwnd += SMSS
-		case t.cwnd < SMSS*SMSS: t.cwnd += SMSS*SMSS/t.cwnd
-		default: t.cwnd += 1
+	case CLOSING:
+		if pkt.flag == ACK && pkt.ack == t.sendseq {
+			t.status = TIMEWAIT
+			t.t_finwait = 0
+			t.t_2msl = 2*TM_MSL
+			// t.t_2msl = int32(t.rtt << 3 + t.rttvar << 5)
+			t.close_nowait()
+			return true, nil
 		}
-		t.logger.Debug("congestion adjust, ack,", t.cwnd, t.ssthresh)
-
-		t.sack_count = 0
-		t.retrans_count = 0
-		if t.t_rexmt != 0 {
-			if len(t.sendbuf) == 0 {
-				t.t_rexmt = 0
-			}else{
-				t.t_rexmt = int32(t.rtt + t.rttvar << 2)
-				t.t_rexmt -= int32(ti.Sub(t.sendbuf[0].t) / 1000000)
-			}
+	case LASTACK:
+		if pkt.flag == ACK && pkt.ack == t.sendseq {
+			t.status = CLOSED
+			t.c_event <- EV_END
+			return true, nil
 		}
 	}
 
-	switch{
-	case (pkt.seq - t.recvseq) < 0:
-		put_packet(pkt)
-		t.send(ACK, nil)
-		return
-	case (pkt.seq - t.recvseq) == 0:
+	switch {
+	case diff < 0:
+		if pkt.flag != ACK { t.send(ACK, nil) }
+		return true, nil
+	case diff == 0:
 		for p = pkt; ; {
 			err = t.proc_current(p)
 			put_packet(p)
@@ -73,56 +69,31 @@ func (t *Tunnel) on_packet (pkt *Packet) (err error) {
 			if t.recvbuf[0].seq != t.recvseq { break }
 			p = t.recvbuf.Pop()
 		}
-	case (pkt.seq - t.recvseq) > 0:
-		switch {
-		case (pkt.flag & SACK) != 0:
-			err = t.proc_sack(pkt)
-			if err != nil { return }
-			put_packet(pkt)
-		case (len(pkt.content) > 0) || (pkt.flag != ACK):
-			t.recvbuf.Push(pkt)
-		default: put_packet(pkt)
+
+		if t.recvseq != t.recvack && t.t_dack == 0 {
+			if OPT_DELAYACK {
+				t.t_dack = 1
+			}else{
+				err = t.send(ACK, nil)
+				if err != nil { return }
+			}
 		}
+	case diff > 0:
+		if (len(pkt.content) > 0) || (pkt.flag != ACK) {
+			t.recvbuf.Push(pkt)
+		}else{ recycly = true }
 		err = t.send_sack()
 		if err != nil { return }
 	}
 
-	if t.recvseq != t.recvack && t.t_dack == 0 {
-		// t.t_dack = 1
-		err = t.send(ACK, nil)
-		if err != nil { return }
-	}
 	return
 }
 
 func (t *Tunnel) proc_current (pkt *Packet) (err error) {
-	if t.status == SYNRCVD {
-		t.t_conn = 0
-		t.status = EST
-	}
-	if pkt.flag == ACK {
-		if len(t.sendbuf) == 0 {
-			switch t.status {
-			case FINWAIT1:
-				t.status = FINWAIT2
-				t.send(FIN, nil)
-			case CLOSING:
-				t.status = TIMEWAIT
-				t.t_finwait = 0
-				t.t_2msl = 2*TM_MSL
-				// t.t_2msl = int32(t.rtt << 3 + t.rttvar << 5)
-				t.close_nowait()
-			case LASTACK:
-				t.status = CLOSED
-				t.c_event <- EV_END
-			}
-		}
-	}
+	t.sendwnd = int32(pkt.window)
 
 	switch {
-	case (pkt.flag & SACK) != 0: return t.proc_sack(pkt)
 	case len(pkt.content) > 0:
-		t.recvseq += int32(len(pkt.content))
 		t.readlck.Lock()
 		_, err = t.readbuf.Write(pkt.content)
 		t.readlck.Unlock()
@@ -131,6 +102,7 @@ func (t *Tunnel) proc_current (pkt *Packet) (err error) {
 		case t.c_read <- 1:
 		default:
 		}
+		t.recvseq += int32(len(pkt.content))
 	case pkt.flag != ACK: t.recvseq += 1
 	default: return
 	}
@@ -163,7 +135,7 @@ func (t *Tunnel) proc_current (pkt *Packet) (err error) {
 		case EST:
 			t.status = LASTACK
 			err = t.send(FIN | ACK, nil)
-			t.c_write = nil
+			t.c_wrout = nil
 			return
 		case FINWAIT1:
 			if len(t.sendbuf) == 0 {
@@ -193,6 +165,42 @@ func (t *Tunnel) proc_current (pkt *Packet) (err error) {
 		}
 	}
 	return
+}
+
+func (t *Tunnel) proc_ack(pkt *Packet) {
+	var p *Packet
+	ti := time.Now()
+
+	for len(t.sendbuf) != 0 && (t.sendbuf[0].seq - pkt.ack) < 0 {
+		p = t.sendbuf.Pop()
+
+		delta := int32(ti.Sub(p.t).Nanoseconds() / 1000000) - int32(t.rtt)
+		t.rtt = uint32(int32(t.rtt) + delta >> 3)
+		t.rttvar = uint32(int32(t.rttvar) + (abs(delta) - int32(t.rttvar)) >> 2)
+
+		put_packet(p)
+	}
+
+	switch {
+	case t.sack_count >= 2 || t.retrans_count != 0:
+		t.cwnd = t.ssthresh
+	case t.cwnd <= t.ssthresh: t.cwnd += SMSS
+	case t.cwnd < SMSS*SMSS: t.cwnd += SMSS*SMSS/t.cwnd
+	default: t.cwnd += 1
+	}
+	t.logger.Debug("congestion adjust, ack,", t.cwnd, t.ssthresh)
+
+	t.sack_count = 0
+	t.retrans_count = 0
+	if t.t_rexmt != 0 {
+		if len(t.sendbuf) == 0 {
+			t.t_rexmt = 0
+		}else{
+			t.t_rexmt = int32(t.rtt + t.rttvar << 2)
+			t.t_rexmt -= int32(ti.Sub(t.sendbuf[0].t) / 1000000)
+		}
+	}
+	return 
 }
 
 func (t *Tunnel) proc_sack(pkt *Packet) (err error) {
@@ -253,7 +261,6 @@ func (t *Tunnel) proc_sack(pkt *Packet) (err error) {
 
 		t.resend(id, true)
 	}
-	t.check_windows_block()
 
 	return
 }

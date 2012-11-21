@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	DROPFLAG = false
+	DROPFLAG = true
 	DROPRATE = 95
 	MAXPARELLELCONN = 800
 	SMSS = 1024 // Sender Maximum Segment Size
@@ -16,6 +16,7 @@ const (
 	RESTARTACK = 3*16*1024
 	MAXRESEND = 7
 	RETRANS_SACKCOUNT = 2
+	OPT_DELAYACK = false
 )
 
 const (

@@ -53,8 +53,8 @@ type Tunnel struct {
 	readlck sync.Mutex
 	readbuf bytes.Buffer
 	c_read chan uint8
-	c_write chan *Packet
-	c_wrbak chan *Packet
+	c_wrin chan *Packet
+	c_wrout chan *Packet
 	c_event chan uint8
 	c_connect chan uint8
 	c_close chan uint8
@@ -82,8 +82,8 @@ func NewTunnel(remote *net.UDPAddr, name string) (t *Tunnel) {
 	t.t_keep = TM_KEEPALIVE
 
 	t.c_read = make(chan uint8)
-	t.c_write = make(chan *Packet, 1)
-	t.c_wrbak = t.c_write
+	t.c_wrin = make(chan *Packet, 3)
+	t.c_wrout = t.c_wrin
 	t.c_event = make(chan uint8, 3)
 	t.c_connect = make(chan uint8, 1)
 	t.c_close = make(chan uint8)
@@ -102,7 +102,7 @@ func (t *Tunnel) Dump() string {
 		"st: %s, sseq: %d, rseq: %d, sbuf: %d, rbuf: %d, read: %d, write: %d, blk: %t",
 		DumpStatus(t.status), t.sendseq, t.recvseq,
 		len(t.sendbuf), len(t.recvbuf), t.readbuf.Len(),
-		len(t.c_wrbak), t.c_write == nil)
+		len(t.c_wrin), t.c_wrout == nil)
 }
 
 func (t Tunnel) DumpCounter () string {
@@ -113,9 +113,9 @@ func (t Tunnel) DumpCounter () string {
 
 func (t *Tunnel) main () {
 	var err error
+	var recycly bool
 	var ev uint8
 	var pkt *Packet
-	// var rb *RecvBlock
 	defer t.on_quit()
 
 QUIT:
@@ -131,11 +131,12 @@ QUIT:
 			err = t.on_timer()
 			if err != nil { t.logger.Err(err) }
 		case pkt = <- t.c_recv:
-			err = t.on_packet(pkt)
+			recycly, err = t.on_packet(pkt)
 			if err != nil { t.logger.Err(err) }
+			if recycly { put_packet(pkt) }
 			t.check_windows_block()
 			t.logger.Debug("loop", t.Dump())
-		case pkt = <- t.c_write:
+		case pkt = <- t.c_wrout:
 			err = t.send(0, pkt)
 			if err != nil { t.logger.Err(err) }
 			t.check_windows_block()
@@ -150,10 +151,10 @@ func (t *Tunnel) check_windows_block () {
 	switch {
 	case (inairlen >= t.sendwnd) || (inairlen >= t.cwnd):
 		t.logger.Debug("blocking,", inairlen, t.sendwnd, t.cwnd, t.ssthresh)
-		t.c_write = nil
-	case t.status == EST && t.c_write == nil:
+		t.c_wrout = nil
+	case t.status == EST && t.c_wrout == nil:
 		t.logger.Debug("restart,", inairlen, t.sendwnd, t.cwnd, t.ssthresh)
-		t.c_write = t.c_wrbak
+		t.c_wrout = t.c_wrin
 	}
 }
 
@@ -171,7 +172,7 @@ func (t *Tunnel) on_event (ev uint8) (err error) {
 		if t.status != EST { return }
 		t.t_finwait = TM_FINWAIT
 		t.status = FINWAIT1
-		t.c_write = nil
+		t.c_wrout = nil
 		return t.send(FIN, nil)
 	case EV_READ:
 		return t.send(ACK, nil)
@@ -250,7 +251,7 @@ func (t *Tunnel) on_quit () {
 	t.close_nowait()
 	
 	close(t.c_read)
-	close(t.c_wrbak)
+	close(t.c_wrin)
 	if t.onclose != nil { t.onclose() }
 
 	if rand.Intn(100) > 95 { runtime.GC() }

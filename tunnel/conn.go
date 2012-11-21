@@ -68,8 +68,9 @@ func (tc TunnelConn) Write(b []byte) (n int, err error) {
 
 		size, pkt = half_packet(b[i:i+size])
 		if tc.t.status == CLOSED { return 0, io.EOF }
-		tc.t.c_write <- pkt
+		tc.t.c_wrin <- pkt
 		n += size
+		tc.t.logger.Debug("Write a block")
 	}
 	return
 }

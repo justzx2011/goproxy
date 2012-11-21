@@ -1,9 +1,12 @@
 package sutils
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"net"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -30,7 +33,7 @@ var console bool
 var loglv int
 var logconn *net.UDPConn
 var facility int
-var output *os.File
+var output io.Writer
 var hostname string
 
 func GetLevelByName(name string) (lv int, err error) {
@@ -57,7 +60,17 @@ func SetupLog(logfile string, loglevel int, f int) (err error) {
 		return
 	}
 
+	buffered := false
+	if strings.HasPrefix(logfile, "buf:") {
+		
+		buffered = true
+		logfile = logfile[4:]
+	}
 	output, err = os.OpenFile(logfile, os.O_WRONLY | os.O_APPEND | os.O_CREATE, 0644)
+	if buffered {
+		output = bufio.NewWriterSize(output, 512)
+		output.Write([]byte("buffered\n"))
+	}
 	return
 }
 
@@ -75,7 +88,7 @@ func WriteLog(name string, lv int, a []interface{}) {
 	default:
 		if output == nil { return }
 		h := fmt.Sprintf("%s %s[%s] ", time.Now().Format(TIMEFMT), name, lvname[lv])
-		output.WriteString(h + fmt.Sprintln(a...))
+		output.Write([]byte(h + fmt.Sprintln(a...)))
 	}
 }
 

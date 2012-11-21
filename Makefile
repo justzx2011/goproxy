@@ -6,8 +6,8 @@
 ## X-URL: 
 TARGET=goproxy
 DEBUGOPT=--loglevel DEBUG
-DEBUGSRV=--logfile server.log
-DEBUGCLI=--logfile client.log
+DEBUGSRV=--logfile buf:server.log
+DEBUGCLI=--logfile buf:client.log
 
 all: clean build
 
