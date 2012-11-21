@@ -91,7 +91,8 @@ func (t *Tunnel) on_retrans () (err error) {
 	}
 
 	err = t.resend(0, false)
-	if err != nil { return }
+	// if err != nil { return }
+	if err != nil { panic(err) }
 
 	inairlen := int32(0)
 	if len(t.sendbuf) > 0 { inairlen = t.sendseq - t.sendbuf[0].seq }

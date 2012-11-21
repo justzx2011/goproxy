@@ -80,9 +80,11 @@ func DialTunnel(addr string) (tc net.Conn, err error) {
 	var t *Tunnel
 
 	udpaddr, err := net.ResolveUDPAddr("udp", addr)
-	if err != nil { return }
+	// if err != nil { return }
+	if err != nil { panic(err) }
 	conn, err = net.DialUDP("udp", nil, udpaddr)
-	if err != nil { return }
+	// if err != nil { return }
+	if err != nil { panic(err) }
 	localaddr := conn.LocalAddr()
 
 	name := fmt.Sprintf("%s_cli", strings.Split(localaddr.String(), ":")[1])

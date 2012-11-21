@@ -76,17 +76,23 @@ func (p *Packet) Pack() (n int, err error) {
 		return 0, fmt.Errorf("packet too large, %d/%d", len(p.content), SMSS)
 	}
 	err = binary.Write(buf, binary.BigEndian, &p.flag)
-	if err != nil { return }
+	// if err != nil { return }
+	if err != nil { panic(err) }
 	err = binary.Write(buf, binary.BigEndian, &p.window)
-	if err != nil { return }
+	// if err != nil { return }
+	if err != nil { panic(err) }
 	err = binary.Write(buf, binary.BigEndian, &p.seq)
-	if err != nil { return }
+	// if err != nil { return }
+	if err != nil { panic(err) }
 	err = binary.Write(buf, binary.BigEndian, &p.ack)
-	if err != nil { return }
+	// if err != nil { return }
+	if err != nil { panic(err) }
 	err = binary.Write(buf, binary.BigEndian, &p.crc)
-	if err != nil { return }
+	// if err != nil { return }
+	if err != nil { panic(err) }
 	err = binary.Write(buf, binary.BigEndian, uint16(len(p.content)))
-	if err != nil { return }
+	// if err != nil { return }
+	if err != nil { panic(err) }
 	return HEADERSIZE+len(p.content), err
 }
 
@@ -95,17 +101,23 @@ func (p *Packet) Unpack(n int) (err error) {
 	buf := bytes.NewBuffer(p.buf[:n])
 
 	err = binary.Read(buf, binary.BigEndian, &p.flag)
-	if err != nil { return }
+	// if err != nil { return }
+	if err != nil { panic(err) }
 	err = binary.Read(buf, binary.BigEndian, &p.window)
-	if err != nil { return }
+	// if err != nil { return }
+	if err != nil { panic(err) }
 	err = binary.Read(buf, binary.BigEndian, &p.seq)
-	if err != nil { return }
+	// if err != nil { return }
+	if err != nil { panic(err) }
 	err = binary.Read(buf, binary.BigEndian, &p.ack)
-	if err != nil { return }
+	// if err != nil { return }
+	if err != nil { panic(err) }
 	err = binary.Read(buf, binary.BigEndian, &p.crc)
-	if err != nil { return }
+	// if err != nil { return }
+	if err != nil { panic(err) }
 	err = binary.Read(buf, binary.BigEndian, &l)
-	if err != nil { return }
+	// if err != nil { return }
+	if err != nil { panic(err) }
 
 	if l > SMSS { return fmt.Errorf("packet too large, %d/%d", l, SMSS) }
 	if buf.Len() != int(l) { return errors.New("packet broken") }

@@ -37,7 +37,8 @@ func (tc TunnelConn) Read(b []byte) (n int, err error) {
 	tc.t.readlck.Lock()
 	n, err = tc.t.readbuf.Read(b)
 	tc.t.readlck.Unlock()
-	if err != nil { return }
+	// if err != nil { return }
+	if err != nil { panic(err) }
 
 	if l >= RESTARTACK && (l - n) < RESTARTACK {
 		tc.t.c_event <- EV_READ
@@ -111,7 +112,8 @@ func SplitBytes(b []byte, size int, f func ([]byte) (error)) (err error) {
 		if i + size < len(b) {
 			err = f(b[i:i+size])
 		}else{ err = f(b[i:]) }
-		if err != nil { return }
+		// if err != nil { return }
+		if err != nil { panic(err) }
 	}
 	return
 }

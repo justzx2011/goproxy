@@ -195,14 +195,16 @@ func (t *Tunnel) on_timer () (err error) {
 		t.logger.Debug("timer connest")
 		t.c_event <- EV_END
 		err = t.send(RST, nil)
-		if err != nil { return }
+		// if err != nil { return }
+		if err != nil { panic(err) }
 	}
 
 	t.t_rexmt, trigger = tick_timer(t.t_rexmt)
 	if trigger {
 		t.logger.Debug("timer retrans")
 		err = t.on_retrans()
-		if err != nil { return }
+		// if err != nil { return }
+		if err != nil { panic(err) }
 	}
 
 	t.t_persist, trigger = tick_timer(t.t_persist)
@@ -217,7 +219,8 @@ func (t *Tunnel) on_timer () (err error) {
 		t.logger.Debug("timer keepalive")
 		t.c_event <- EV_END
 		err = t.send(RST, nil)
-		if err != nil { return }
+		// if err != nil { return }
+		if err != nil { panic(err) }
 	}
 
 	t.t_finwait, trigger = tick_timer(t.t_finwait)
@@ -225,7 +228,8 @@ func (t *Tunnel) on_timer () (err error) {
 		t.logger.Debug("timer finwait")
 		t.c_event <- EV_END
 		err = t.send(RST, nil)
-		if err != nil { return }
+		// if err != nil { return }
+		if err != nil { panic(err) }
 	}
 
 	t.t_2msl, trigger = tick_timer(t.t_2msl)
@@ -238,7 +242,8 @@ func (t *Tunnel) on_timer () (err error) {
 	if trigger {
 		t.logger.Debug("timer delayack")
 		err = t.send(ACK, nil)
-		if err != nil { return }
+		// if err != nil { return }
+		if err != nil { panic(err) }
 	}
 	return
 }

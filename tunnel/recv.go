@@ -63,7 +63,8 @@ func (t *Tunnel) on_packet (pkt *Packet) (recycly bool, err error) {
 		for p = pkt; ; {
 			err = t.proc_current(p)
 			put_packet(p)
-			if err != nil { return }
+			// if err != nil { return }
+			if err != nil { panic(err) }
 
 			if len(t.recvbuf) == 0 { break }
 			if t.recvbuf[0].seq != t.recvseq { break }
@@ -75,7 +76,8 @@ func (t *Tunnel) on_packet (pkt *Packet) (recycly bool, err error) {
 				t.t_dack = 1
 			}else{
 				err = t.send(ACK, nil)
-				if err != nil { return }
+				// if err != nil { return }
+				if err != nil { panic(err) }
 			}
 		}
 	case diff > 0:
@@ -83,7 +85,8 @@ func (t *Tunnel) on_packet (pkt *Packet) (recycly bool, err error) {
 			t.recvbuf.Push(pkt)
 		}else{ recycly = true }
 		err = t.send_sack()
-		if err != nil { return }
+		// if err != nil { return }
+		if err != nil { panic(err) }
 	}
 
 	return
@@ -97,7 +100,8 @@ func (t *Tunnel) proc_current (pkt *Packet) (err error) {
 		t.readlck.Lock()
 		_, err = t.readbuf.Write(pkt.content)
 		t.readlck.Unlock()
-		if err != nil { return }
+		// if err != nil { return }
+		if err != nil { panic(err) }
 		select {
 		case t.c_read <- 1:
 		default:
@@ -118,7 +122,8 @@ func (t *Tunnel) proc_current (pkt *Packet) (err error) {
 			t.t_conn = 0
 			t.status = EST
 			err = t.send(ACK, nil)
-			if err != nil { return }
+			// if err != nil { return }
+			if err != nil { panic(err) }
 			t.c_connect <- EV_CONNECTED
 		}else{
 			if t.status != CLOSED {
@@ -141,7 +146,8 @@ func (t *Tunnel) proc_current (pkt *Packet) (err error) {
 			if len(t.sendbuf) == 0 {
 				t.status = TIMEWAIT
 				err = t.send(ACK, nil)
-				if err != nil { return }
+				// if err != nil { return }
+				if err != nil { panic(err) }
 				t.t_finwait = 0
 				t.t_2msl = 2*TM_MSL
 				// t.t_2msl = int32(t.rtt << 3 + t.rttvar << 5)
@@ -153,7 +159,8 @@ func (t *Tunnel) proc_current (pkt *Packet) (err error) {
 		case FINWAIT2:
 			t.status = TIMEWAIT
 			err = t.send(ACK, nil)
-			if err != nil { return }
+			// if err != nil { return }
+			if err != nil { panic(err) }
 			t.t_finwait = 0
 			t.t_2msl = 2*TM_MSL
 			// t.t_2msl = int32(t.rtt << 3 + t.rttvar << 5)

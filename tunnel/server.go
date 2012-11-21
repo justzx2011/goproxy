@@ -77,9 +77,11 @@ func (srv *Server) get_tunnel(remote *net.UDPAddr, pkt *Packet) (t *Tunnel, err 
 
 func UdpServer (addr string, handler func (net.Conn) (error)) (err error) {
 	udpaddr, err := net.ResolveUDPAddr("udp", addr)
-	if err != nil { return }
+	// if err != nil { return }
+	if err != nil { panic(err) }
 	conn, err := net.ListenUDP("udp", udpaddr)
-	if err != nil { return }
+	// if err != nil { return }
+	if err != nil { panic(err) }
 	defer conn.Close()
 
 	srv := NewServer(conn)
