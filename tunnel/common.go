@@ -8,6 +8,7 @@ import (
 
 const (
 	DROPFLAG = false
+	DROPRATE = 95
 	MAXPARELLELCONN = 800
 	SMSS = 1024 // Sender Maximum Segment Size
 	WINDOWSIZE = 65535

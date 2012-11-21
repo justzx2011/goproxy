@@ -8,6 +8,9 @@ import (
 	"time"
 )
 
+var send_count int64
+var sendpkt_count int64
+
 func (t *Tunnel) send_sack () (err error) {
 	// t.logger.Warning("sack send", t.recvbuf.String())
 	t.logger.Debug("sack send")
@@ -22,6 +25,7 @@ func (t *Tunnel) send_sack () (err error) {
 }
 
 func (t *Tunnel) send (flag uint8, pkt *Packet) (err error) {
+	send_count += 1
 	if t.status != EST && flag == 0{
 		return fmt.Errorf("can't send data, %s, pkt: %s", t, DumpFlag(flag))
 	}
@@ -36,47 +40,47 @@ func (t *Tunnel) send (flag uint8, pkt *Packet) (err error) {
 	size := len(pkt.content)
 
 	retrans := (flag & SACK) == 0 && (flag != ACK || size != 0)
-	err = t.send_packet(pkt, retrans)
-	if err != nil { return }
+	t.send_packet(pkt)
+
 	// todo: 不加入sendbuf的pkt的回收
 	// 不能直接回收，会导致发送时有问题
 	// if !retrans { put_packet(pkt) }
+	if retrans {
+		pkt.t = time.Now()
+		t.sendbuf.Push(pkt)
 
+		if t.t_rexmt == 0 {
+			t.t_rexmt = int32(t.rtt + t.rttvar << 2)
+		}
+	}
+	
 	switch {
 	case (flag & SACK) != 0:
 	case size > 0: t.sendseq += int32(size)
 	case flag != ACK: t.sendseq += 1
 	}
-	t.check_windows_block()
 
 	t.recvack = t.recvseq
 	if t.t_dack != 0 { t.t_dack = 0 }
 	return
 }
 
-func (t *Tunnel) send_packet(pkt *Packet, retrans bool) (err error) {
+func (t *Tunnel) send_packet(pkt *Packet) {
+	sendpkt_count += 1
 	t.logger.Debug("send", pkt)
+	t.logger.Debug("send rate,", send_count, sendpkt_count)
 
-	if DROPFLAG && rand.Intn(100) >= 85 {
+	if DROPFLAG && rand.Intn(100) >= DROPRATE {
 		t.logger.Debug("drop packet")
 	}else{
 		t.c_send <- &SendBlock{t.remote, pkt}
-	}
-	if !retrans { return }
-
-	pkt.t = time.Now()
-	t.sendbuf.Push(pkt)
-
-	if t.t_rexmt == 0 {
-		t.t_rexmt = int32(t.rtt + t.rttvar << 2)
 	}
 	return
 }
 
 func (t *Tunnel) resend (stopid int32, stop bool) (err error) {
 	for _, p := range t.sendbuf {
-		err = t.send_packet(p, false)
-		if err != nil { return }
+		t.send_packet(p)
 		if stop && (p.seq - stopid) >= 0 { return }
 	}
 	return
@@ -96,21 +100,9 @@ func (t *Tunnel) on_retrans () (err error) {
 
 	inairlen := int32(0)
 	if len(t.sendbuf) > 0 { inairlen = t.sendseq - t.sendbuf[0].seq }
-	t.ssthresh = max32(inairlen/2, 2*SMSS)
+	t.ssthresh = max32(inairlen >> 2, 2*SMSS)
+	t.logger.Debug("congestion adjust, resend,", t.cwnd, t.ssthresh)
 
 	t.t_rexmt = int32(t.rtt + t.rttvar << 2) * (1 << t.retrans_count)
 	return
-}
-
-func (t *Tunnel) check_windows_block () {
-	inairlen := int32(0)
-	if len(t.sendbuf) > 0 { inairlen = t.sendseq - t.sendbuf[0].seq }
-	switch {
-	case (inairlen >= t.sendwnd) || (inairlen >= t.cwnd):
-		t.logger.Debug("blocking,", inairlen, t.sendwnd, t.cwnd, t.ssthresh)
-		t.c_write = nil
-	case t.status == EST && t.c_write == nil:
-		t.logger.Debug("restart,", inairlen, t.sendwnd, t.cwnd, t.ssthresh)
-		t.c_write = t.c_wrbak
-	}
 }

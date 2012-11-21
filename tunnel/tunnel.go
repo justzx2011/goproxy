@@ -125,17 +125,35 @@ QUIT:
 			if ev == EV_END { break QUIT }
 			t.logger.Debug("on event", ev)
 			err = t.on_event(ev)
+			if err != nil { t.logger.Err(err) }
 			t.logger.Debug("loop", t.Dump())
-		case <- t.ticker: err = t.on_timer()
+		case <- t.ticker:
+			err = t.on_timer()
+			if err != nil { t.logger.Err(err) }
 		case pkt = <- t.c_recv:
 			err = t.on_packet(pkt)
+			if err != nil { t.logger.Err(err) }
+			t.check_windows_block()
 			t.logger.Debug("loop", t.Dump())
 		case pkt = <- t.c_write:
 			err = t.send(0, pkt)
+			if err != nil { t.logger.Err(err) }
+			t.check_windows_block()
 			t.logger.Debug("loop", t.Dump())
 		}
-		if err != nil { t.logger.Err(err) }
-		// t.logger.Debug(t.DumpCounter())
+	}
+}
+
+func (t *Tunnel) check_windows_block () {
+	inairlen := int32(0)
+	if len(t.sendbuf) > 0 { inairlen = t.sendseq - t.sendbuf[0].seq }
+	switch {
+	case (inairlen >= t.sendwnd) || (inairlen >= t.cwnd):
+		t.logger.Debug("blocking,", inairlen, t.sendwnd, t.cwnd, t.ssthresh)
+		t.c_write = nil
+	case t.status == EST && t.c_write == nil:
+		t.logger.Debug("restart,", inairlen, t.sendwnd, t.cwnd, t.ssthresh)
+		t.c_write = t.c_wrbak
 	}
 }
 

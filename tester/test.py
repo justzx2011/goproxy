@@ -11,7 +11,8 @@ from gevent import socket, pool
 import http, socks
 
 c = socks.socks5(('debox', 1081))(socket.socket)
-def download(uri):
+# c = socket.socket
+def download(uri, tmp=False):
     url = urlparse(uri)
 
     r = (url.netloc or url.path).split(':', 1)
@@ -23,8 +24,8 @@ def download(uri):
     req = http.request_http(uri)
     req.set_header("Host", url.hostname)
     res = http.http_client(req, (hostname, port), c)
-    res.debug()
-    return res.read_body()
+    if not tmp: return res.read_body()
+    for d in res.read_chunk(res.stream): pass
 
 def doloop(url, d):
     counter = [0, 0, 0, 0]
@@ -45,7 +46,7 @@ def doloop(url, d):
         writest('\r')
 
     p = pool.Pool(200)
-    for i in xrange(2000): p.spawn(tester)
+    for i in xrange(20000): p.spawn(tester)
     p.join()
     writest('\n')
 
@@ -62,13 +63,12 @@ def initlog(lv, logfile=None):
 
 def main():
     initlog(logging.INFO)
-    optlist, args = getopt(sys.argv[1:], "o")
+    optlist, args = getopt(sys.argv[1:], "ot")
     optdict = dict(optlist)
-    if not args: url = 'http://localhost/'
+    if not args: url = 'http://debox/'
     else: url = args[0]
-    d = download(url)
-    if '-o' in optdict:
-        print d
-    else: doloop(url, d)
+    if '-o' in optdict: print download(url)
+    elif '-t' in optdict: print download(url, True)
+    else: doloop(url, download(url))
 
 if __name__ == '__main__': main()

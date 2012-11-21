@@ -5,9 +5,9 @@
 ## Keywords: 
 ## X-URL: 
 TARGET=goproxy
-DEBUGOPT=--loglevel WARNING
-# DEBUGSRV=--logfile server.log
-# DEBUGCLI=--logfile client.log
+DEBUGOPT=--loglevel DEBUG
+DEBUGSRV=--logfile server.log
+DEBUGCLI=--logfile client.log
 
 all: clean build
 
