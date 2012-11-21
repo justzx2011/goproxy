@@ -8,12 +8,9 @@ import (
 	"time"
 )
 
-var send_count int64
-var sendpkt_count int64
-
 func (t *Tunnel) send_sack () (err error) {
 	// t.logger.Warning("sack send", t.recvbuf.String())
-	t.logger.Debug("sack send")
+	t.logger.Debug("sack send", t.recvbuf.String())
 	pkt := get_packet()
 	buf := bytes.NewBuffer(pkt.buf[HEADERSIZE:HEADERSIZE])
 	for i, p := range t.recvbuf {
@@ -21,15 +18,13 @@ func (t *Tunnel) send_sack () (err error) {
 		binary.Write(buf, binary.BigEndian, p.seq)
 	}
 	pkt.content = buf.Bytes()
-	return t.send(SACK, pkt)
+	err = t.send(SACK, pkt)
+	if err != nil { panic(err) }
+	return
 }
 
 func (t *Tunnel) send (flag uint8, pkt *Packet) (err error) {
-	send_count += 1
-
-	// todo: status djuge
-
-	if t.status != EST && flag == 0{
+	if t.status != EST && flag == 0 {
 		return fmt.Errorf("can't send data, %s, pkt: %s", t, DumpFlag(flag))
 	}
 
@@ -45,7 +40,7 @@ func (t *Tunnel) send (flag uint8, pkt *Packet) (err error) {
 	t.recvack = t.recvseq
 	if t.t_dack != 0 { t.t_dack = 0 }
 
-	// todo: 不加入sendbuf的pkt的回收
+	// TODO: 不加入sendbuf的pkt的回收
 	// 不能直接回收，会导致发送时有问题
 	switch { // 不参与seq递增的包，也不需要retrans
 	case (flag & SACK) != 0: return
@@ -61,9 +56,8 @@ func (t *Tunnel) send (flag uint8, pkt *Packet) (err error) {
 }
 
 func (t *Tunnel) send_packet(pkt *Packet) {
-	sendpkt_count += 1
+	t.stat.senderr += 1
 	t.logger.Debug("send", pkt)
-	t.logger.Debug("send rate,", send_count, sendpkt_count)
 
 	if DROPFLAG && rand.Intn(100) >= DROPRATE {
 		t.logger.Debug("drop packet")
@@ -73,10 +67,10 @@ func (t *Tunnel) send_packet(pkt *Packet) {
 	return
 }
 
-func (t *Tunnel) resend (stopid int32, stop bool) (err error) {
+func (t *Tunnel) resend (stopid int32, stop bool) {
 	for _, p := range t.sendbuf {
-		t.send_packet(p)
 		if stop && (p.seq - stopid) >= 0 { return }
+		t.send_packet(p)
 	}
 	return
 }
@@ -85,18 +79,17 @@ func (t *Tunnel) on_retrans () (err error) {
 	t.retrans_count += 1
 	if t.retrans_count > MAXRESEND {
 		t.logger.Warning("send packet more then maxretrans times")
-		t.send(RST, nil)
+		err = t.send(RST, nil)
+		if err != nil { panic(err) }
 		t.c_event <- EV_END
 		return
 	}
 
-	err = t.resend(0, false)
-	// if err != nil { return }
-	if err != nil { panic(err) }
+	t.resend(0, false)
 
 	inairlen := int32(0)
 	if len(t.sendbuf) > 0 { inairlen = t.sendseq - t.sendbuf[0].seq }
-	t.ssthresh = max32(inairlen >> 2, 2*SMSS)
+	t.ssthresh = max32(int32(float32(inairlen)*BACKRATE), 2*SMSS)
 	t.logger.Debug("congestion adjust, resend,", t.cwnd, t.ssthresh)
 
 	t.t_rexmt = int32(t.rtt + t.rttvar << 2) * (1 << t.retrans_count)

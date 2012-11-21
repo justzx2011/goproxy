@@ -2,7 +2,6 @@ package tunnel
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"math/rand"
 	"net"
@@ -17,6 +16,7 @@ type Tunnel struct {
 	logger *sutils.Logger
 	remote *net.UDPAddr
 	status uint8
+	stat Statistics
 
 	// communicate with conn loop
 	c_recv chan *Packet
@@ -125,23 +125,23 @@ QUIT:
 			if ev == EV_END { break QUIT }
 			t.logger.Debug("on event", ev)
 			err = t.on_event(ev)
-			if err != nil { t.logger.Err(err) }
-			t.logger.Debug("loop", t.Dump())
 		case <- t.ticker:
 			err = t.on_timer()
-			if err != nil { t.logger.Err(err) }
+			// if err != nil { t.logger.Err(err) }
+			if err != nil { panic(err) }
+			continue
 		case pkt = <- t.c_recv:
 			recycly, err = t.on_packet(pkt)
-			if err != nil { t.logger.Err(err) }
 			if recycly { put_packet(pkt) }
 			t.check_windows_block()
-			t.logger.Debug("loop", t.Dump())
 		case pkt = <- t.c_wrout:
 			err = t.send(0, pkt)
-			if err != nil { t.logger.Err(err) }
 			t.check_windows_block()
-			t.logger.Debug("loop", t.Dump())
 		}
+		// if err != nil { t.logger.Err(err) }
+		if err != nil { panic(err) }
+		t.logger.Debug("loop", t.Dump())
+		t.logger.Debug("stat", t.stat.String())
 	}
 }
 
@@ -162,22 +162,27 @@ func (t *Tunnel) on_event (ev uint8) (err error) {
 	switch ev {
 	case EV_CONNECT:
 		if t.status != CLOSED {
-			t.send(RST, nil)
+			err = t.send(RST, nil)
+			if err != nil { panic(err) }
 			t.c_event <- EV_END
 			return fmt.Errorf("somebody try to connect, %s", t)
 		}
 		t.status = SYNSENT
-		return t.send(SYN, nil)
+		err = t.send(SYN, nil)
+		if err != nil { panic(err) }
 	case EV_CLOSE:
 		if t.status != EST { return }
 		t.t_finwait = TM_FINWAIT
 		t.status = FINWAIT1
 		t.c_wrout = nil
-		return t.send(FIN, nil)
+		err = t.send(FIN, nil)
+		if err != nil { panic(err) }
 	case EV_READ:
-		return t.send(ACK, nil)
+		err = t.send(ACK, nil)
+		if err != nil { panic(err) }
+	default: return fmt.Errorf("unknown event %d", ev)
 	}
-	return errors.New("unknown event")
+	return
 }
 
 func tick_timer(t int32) (int32, bool) {

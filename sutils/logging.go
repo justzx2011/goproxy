@@ -3,7 +3,6 @@ package sutils
 import (
 	"bufio"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"strings"
@@ -33,7 +32,8 @@ var console bool
 var loglv int
 var logconn *net.UDPConn
 var facility int
-var output io.Writer
+var output *os.File
+var outchan chan string
 var hostname string
 
 func GetLevelByName(name string) (lv int, err error) {
@@ -60,18 +60,24 @@ func SetupLog(logfile string, loglevel int, f int) (err error) {
 		return
 	}
 
-	buffered := false
 	if strings.HasPrefix(logfile, "buf:") {
-		
-		buffered = true
 		logfile = logfile[4:]
 	}
 	output, err = os.OpenFile(logfile, os.O_WRONLY | os.O_APPEND | os.O_CREATE, 0644)
-	if buffered {
-		output = bufio.NewWriterSize(output, 512)
-		output.Write([]byte("buffered\n"))
+	if strings.HasPrefix(logfile, "buf:") {
+		outchan = make(chan string, 1000)
+		go outchan_main()
 	}
 	return
+}
+
+func outchan_main () {
+	bufout := bufio.NewWriterSize(output, 512)
+	bufout.Write([]byte("buffered\n"))
+	for {
+		s := <- outchan
+		bufout.WriteString(s)
+	}
 }
 
 func WriteLog(name string, lv int, a []interface{}) {
@@ -85,8 +91,10 @@ func WriteLog(name string, lv int, a []interface{}) {
 		h := fmt.Sprintf("<%d>%s %s %d %s[]: ", facility * 8 + lv,
 			time.Now().Format(TIMEFMT), hostname, os.Getpid(), name)
 		logconn.Write([]byte(h + fmt.Sprintln(a...) + "\n"))
-	default:
-		if output == nil { return }
+	case outchan != nil:
+		h := fmt.Sprintf("%s %s[%s] ", time.Now().Format(TIMEFMT), name, lvname[lv])
+		outchan <- (h + fmt.Sprintln(a...))
+	case output != nil:
 		h := fmt.Sprintf("%s %s[%s] ", time.Now().Format(TIMEFMT), name, lvname[lv])
 		output.Write([]byte(h + fmt.Sprintln(a...)))
 	}

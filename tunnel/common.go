@@ -17,6 +17,7 @@ const (
 	MAXRESEND = 7
 	RETRANS_SACKCOUNT = 2
 	OPT_DELAYACK = false
+	BACKRATE = 0.8
 )
 
 const (
@@ -86,11 +87,13 @@ func DumpFlag(flag uint8) (r string) {
 
 type PacketQueue []*Packet
 
-func (pq *PacketQueue) Push(pkt *Packet) {
+func (pq *PacketQueue) Push(pkt *Packet) (ok bool) {
 	var i int
 
 	for i = len(*pq)-1; i >= 0; i-- {
-		if ((*pq)[i].seq - pkt.seq) < 0 { break }
+		df := (*pq)[i].seq - pkt.seq
+		if df == 0 { return false }
+		if df < 0 { break }
 	}
 
 	switch i {
@@ -100,6 +103,7 @@ func (pq *PacketQueue) Push(pkt *Packet) {
 		copy((*pq)[i+2:], (*pq)[i+1:])
 		(*pq)[i+1] = pkt
 	}
+	return true
 }
 
 func (pq *PacketQueue) Pop() (p *Packet) {
@@ -109,8 +113,11 @@ func (pq *PacketQueue) Pop() (p *Packet) {
 }
 
 func (pq *PacketQueue) String () (s string) {
-	for _, p := range *pq { s += strconv.Itoa(int(p.seq)) + "|" }
-	return
+	var ss []string
+	for _, p := range *pq {
+		ss = append(ss, strconv.Itoa(int(p.seq)))
+	}
+	return "[" + strings.Join(ss, "|") + "]"
 }
 
 type SendBlock struct {

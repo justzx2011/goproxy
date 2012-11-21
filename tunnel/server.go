@@ -8,6 +8,7 @@ import (
 )
 
 var logsrv *sutils.Logger
+var statsrv Statistics
 
 func init () {
 	logsrv = sutils.NewLogger("server")
@@ -39,11 +40,17 @@ func (srv *Server) sender () {
 		n, err = db.pkt.Pack()
 		if err != nil {
 			logsrv.Err("Pack", err)
+			statsrv.senderr += 1
 			continue
 		}
 
 		_, err = srv.conn.WriteToUDP(db.pkt.buf[:n], db.remote)
-		if err != nil { logsrv.Err("WriteToUDP", err) }
+		if err != nil {
+			logsrv.Err("WriteToUDP", err)
+			statsrv.senderr += 1
+		}
+		statsrv.sendpkt += 1
+		statsrv.sendsize += uint64(n)
 	}
 }
 
@@ -96,6 +103,7 @@ func UdpServer (addr string, handler func (net.Conn) (error)) (err error) {
 		pkt = get_packet()
 		n, remote, err = conn.ReadFromUDP(pkt.buf[:])
 		if err != nil {
+			statsrv.recverr += 1
 			put_packet(pkt)
 			logsrv.Err("ReadFromUDP", err)
 			continue
@@ -103,21 +111,28 @@ func UdpServer (addr string, handler func (net.Conn) (error)) (err error) {
 
 		err = pkt.Unpack(n)
 		if err != nil {
+			statsrv.recverr += 1
 			logsrv.Err("Unpack", err)
 			continue
 		}
 
 		t, err = srv.get_tunnel(remote, pkt)
 		if err != nil {
+			statsrv.recverr += 1
 			logsrv.Err("get tunnel", err)
 			continue
 		}
 		if t == nil {
+			statsrv.recverr += 1
 			logsrv.Err("unknow problem leadto channel 0")
 			continue
 		}
 
+		statsrv.recvpkt += 1
+		statsrv.recvsize += uint64(n)
 		t.c_recv <- pkt
+
+		logsrv.Debug("stat srv", statsrv.String())
 	}
 	return
 }

@@ -9,6 +9,7 @@ import (
 
 var logcli *sutils.Logger
 var connlog map[string]*Tunnel
+var statcli Statistics
 
 func init () {
 	logcli = sutils.NewLogger("client")
@@ -33,17 +34,21 @@ func (c *Client) sender () {
 		n, err = db.pkt.Pack()
 		if err != nil {
 			logcli.Err("Pack", err)
+			statcli.senderr += 1
 			continue
 		}
 
 		_, err = c.conn.Write(db.pkt.buf[:n])
 		if err != nil {
+			statcli.senderr += 1
 			if strings.HasSuffix(err.Error(), "use of closed network connection") {
 				break
 			}
 			logcli.Err("Write Net", err)
 			continue
 		}
+		statcli.sendpkt += 1
+		statcli.sendsize += uint64(n)
 	}
 }
 
@@ -58,6 +63,7 @@ func (c *Client) recver () {
 
 		n, err = c.conn.Read(pkt.buf[:])
 		if err != nil {
+			statcli.recverr += 1
 			if !strings.HasSuffix(err.Error(), "use of closed network connection") {
 				logcli.Err("Read Net", err)
 			}
@@ -67,11 +73,16 @@ func (c *Client) recver () {
 
 		err = pkt.Unpack(n)
 		if err != nil {
+			statcli.recverr += 1
 			put_packet(pkt)
 			logcli.Err("Unpack", err)
 			continue
 		}
+		statcli.recvpkt += 1
+		statcli.recvsize += uint64(n)
 		c.t.c_recv <- pkt
+
+		logcli.Debug("stat cli", statcli.String())
 	}
 }
 

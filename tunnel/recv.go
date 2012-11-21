@@ -12,6 +12,7 @@ func (t *Tunnel) on_packet (pkt *Packet) (recycly bool, err error) {
 	var p *Packet
 
 	t.logger.Debug("recv", pkt)
+	t.stat.recvpkt += 1
 	t.t_keep = TM_KEEPALIVE
 
 	if (pkt.flag & RST) != 0 {
@@ -22,7 +23,11 @@ func (t *Tunnel) on_packet (pkt *Packet) (recycly bool, err error) {
 	diff := (pkt.seq - t.recvseq)
 	if diff >= 0 {
 		if (pkt.flag & ACK) != 0 { t.proc_ack(pkt) }
-		if (pkt.flag & SACK) != 0 { return true, t.proc_sack(pkt) }
+		if (pkt.flag & SACK) != 0 {
+			err = t.proc_sack(pkt)
+			if err != nil { panic(err) }
+			return true, nil
+		}
 	}
 
 	switch t.status {
@@ -35,7 +40,8 @@ func (t *Tunnel) on_packet (pkt *Packet) (recycly bool, err error) {
 	case FINWAIT1:
 		if pkt.flag == ACK && pkt.ack == t.sendseq {
 			t.status = FINWAIT2
-			t.send(FIN, nil)
+			err = t.send(FIN, nil)
+			if err != nil { panic(err) }
 			return true, nil
 		}
 	case CLOSING:
@@ -43,7 +49,6 @@ func (t *Tunnel) on_packet (pkt *Packet) (recycly bool, err error) {
 			t.status = TIMEWAIT
 			t.t_finwait = 0
 			t.t_2msl = 2*TM_MSL
-			// t.t_2msl = int32(t.rtt << 3 + t.rttvar << 5)
 			t.close_nowait()
 			return true, nil
 		}
@@ -57,7 +62,10 @@ func (t *Tunnel) on_packet (pkt *Packet) (recycly bool, err error) {
 
 	switch {
 	case diff < 0:
-		if pkt.flag != ACK { t.send(ACK, nil) }
+		if pkt.flag != ACK {
+			err = t.send(ACK, nil)
+			if err != nil { panic(err) }
+		}
 		return true, nil
 	case diff == 0:
 		for p = pkt; ; {
@@ -82,7 +90,7 @@ func (t *Tunnel) on_packet (pkt *Packet) (recycly bool, err error) {
 		}
 	case diff > 0:
 		if (len(pkt.content) > 0) || (pkt.flag != ACK) {
-			t.recvbuf.Push(pkt)
+			if !t.recvbuf.Push(pkt) { recycly = true }
 		}else{ recycly = true }
 		err = t.send_sack()
 		// if err != nil { return }
@@ -107,6 +115,7 @@ func (t *Tunnel) proc_current (pkt *Packet) (err error) {
 		default:
 		}
 		t.recvseq += int32(len(pkt.content))
+		t.stat.recvsize += uint64(len(pkt.content))
 	case pkt.flag != ACK: t.recvseq += 1
 	default: return
 	}
@@ -115,7 +124,8 @@ func (t *Tunnel) proc_current (pkt *Packet) (err error) {
 	case SYN:
 		if (pkt.flag & ACK) != 0 {
 			if t.status != SYNSENT {
-				t.send(RST, nil)
+				err = t.send(RST, nil)
+				if err != nil { panic(err) }
 				t.c_event <- EV_END
 				return fmt.Errorf("SYN ACK status wrong, %s", t)
 			}
@@ -127,19 +137,24 @@ func (t *Tunnel) proc_current (pkt *Packet) (err error) {
 			t.c_connect <- EV_CONNECTED
 		}else{
 			if t.status != CLOSED {
-				t.send(RST, nil)
+				err = t.send(RST, nil)
+				if err != nil { panic(err) }
 				t.c_event <- EV_END
 				return fmt.Errorf("SYN status wrong, %s", t)
 			}
 			t.status = SYNRCVD
 			err = t.send(SYN | ACK, nil)
+			if err != nil { panic(err) }
 		}
 	case FIN:
 		switch t.status {
-		case TIMEWAIT: t.send(ACK, nil)
+		case TIMEWAIT:
+			err = t.send(ACK, nil)
+			if err != nil { panic(err) }
 		case EST:
 			t.status = LASTACK
 			err = t.send(FIN | ACK, nil)
+			if err != nil { panic(err) }
 			t.c_wrout = nil
 			return
 		case FINWAIT1:
@@ -150,11 +165,11 @@ func (t *Tunnel) proc_current (pkt *Packet) (err error) {
 				if err != nil { panic(err) }
 				t.t_finwait = 0
 				t.t_2msl = 2*TM_MSL
-				// t.t_2msl = int32(t.rtt << 3 + t.rttvar << 5)
 				t.close_nowait()
 			}else{
 				t.status = CLOSING
 				err = t.send(ACK, nil)
+				if err != nil { panic(err) }
 			}
 		case FINWAIT2:
 			t.status = TIMEWAIT
@@ -163,12 +178,12 @@ func (t *Tunnel) proc_current (pkt *Packet) (err error) {
 			if err != nil { panic(err) }
 			t.t_finwait = 0
 			t.t_2msl = 2*TM_MSL
-			// t.t_2msl = int32(t.rtt << 3 + t.rttvar << 5)
 			t.close_nowait()
 		default:
-			t.send(RST, nil)
+			err = t.send(RST, nil)
+			if err != nil { panic(err) }
 			t.c_event <- EV_END
-			return fmt.Errorf("FIN status wrong, %s", t)
+			t.logger.Err("FIN status wrong,", t)
 		}
 	}
 	return
@@ -185,6 +200,10 @@ func (t *Tunnel) proc_ack(pkt *Packet) {
 		t.rtt = uint32(int32(t.rtt) + delta >> 3)
 		t.rttvar = uint32(int32(t.rttvar) + (abs(delta) - int32(t.rttvar)) >> 2)
 
+		t.stat.sendpkt += 1
+		t.stat.sendsize += uint64(len(p.content))
+		t.stat.senderr -= 1
+
 		put_packet(p)
 	}
 
@@ -195,10 +214,10 @@ func (t *Tunnel) proc_ack(pkt *Packet) {
 	case t.cwnd < SMSS*SMSS: t.cwnd += SMSS*SMSS/t.cwnd
 	default: t.cwnd += 1
 	}
-	t.logger.Debug("congestion adjust, ack,", t.cwnd, t.ssthresh)
-
 	t.sack_count = 0
 	t.retrans_count = 0
+	t.logger.Debug("congestion adjust, ack,", t.cwnd, t.ssthresh)
+
 	if t.t_rexmt != 0 {
 		if len(t.sendbuf) == 0 {
 			t.t_rexmt = 0
@@ -214,23 +233,26 @@ func (t *Tunnel) proc_sack(pkt *Packet) (err error) {
 	var i int
 	var id int32
 
-	t.logger.Debug("sack proc")
+	t.logger.Debug("sack proc", t.sendbuf.String())
+	t.stat.recverr += 1
 	buf := bytes.NewBuffer(pkt.content)
 
 	err = binary.Read(buf, binary.BigEndian, &id)
+	t.logger.Debug("sack id", id)
 	switch err {
-	case io.EOF:
+	case io.EOF: err = nil
 	case nil:
 		var sendbuf PacketQueue
+LOOP:
 		for i = 0; i < len(t.sendbuf); {
 			p := t.sendbuf[i]
 			df := p.seq - id
 			switch {
 			case df == 0:
-				put_packet(t.sendbuf[i])
+				put_packet(p)
 				i += 1
 			case df < 0:
-				sendbuf = append(sendbuf, t.sendbuf[i])
+				sendbuf = append(sendbuf, p)
 				i += 1
 			}
 
@@ -239,16 +261,21 @@ func (t *Tunnel) proc_sack(pkt *Packet) (err error) {
 				switch err {
 				case io.EOF:
 					err = nil
-					break
+					break LOOP
 				case nil:
-				default: return
+				default:
+					panic(err)
+					// return
 				}
+				t.logger.Debug("sack id", id)
 			}
 		}
 		if i < len(t.sendbuf) { sendbuf = append(sendbuf, t.sendbuf[i:]...) }
 		t.sendbuf = sendbuf
 	}
+	t.logger.Debug("sack proc end", t.sendbuf.String())
 
+	// FIXME: sack会一遍遍的重传已经发过的包
 	t.sack_count += 1
 	switch {
 	case t.sack_count == RETRANS_SACKCOUNT:
@@ -256,7 +283,7 @@ func (t *Tunnel) proc_sack(pkt *Packet) (err error) {
 
 		inairlen := int32(0)
 		if len(t.sendbuf) > 0 { inairlen = t.sendseq - t.sendbuf[0].seq }
-		t.ssthresh = max32(inairlen >> 2, 2*SMSS)
+		t.ssthresh = max32(int32(float32(inairlen)*BACKRATE), 2*SMSS)
 		t.cwnd = t.ssthresh + 3*SMSS
 		t.logger.Debug("congestion adjust, first sack,", t.cwnd, t.ssthresh)
 
