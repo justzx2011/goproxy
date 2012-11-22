@@ -33,9 +33,6 @@ func (t *Tunnel) on_packet (pkt *Packet) (recycly bool, err error) {
 	case TIMEWAIT:
 		if (pkt.flag & SYN) != 0 { t.c_event <- EV_END }
 		return true, nil
-	case SYNRCVD:
-		t.timer.conn = 0
-		t.status = EST
 	case FINWAIT1:
 		if pkt.flag == ACK && pkt.ack == t.sendseq {
 			t.status = FINWAIT2
@@ -55,6 +52,10 @@ func (t *Tunnel) on_packet (pkt *Packet) (recycly bool, err error) {
 			t.c_event <- EV_END
 			return true, nil
 		}
+	case SYNRCVD:
+		t.timer.conn = 0
+		t.status = EST
+		t.c_wrout = t.c_wrin
 	}
 
 	switch {
@@ -126,6 +127,7 @@ func (t *Tunnel) proc_current (pkt *Packet) (ackneed bool, err error) {
 			t.timer.conn = 0
 			t.status = EST
 			t.send(ACK, nil)
+			t.c_wrout = t.c_wrin
 			t.c_connect <- EV_CONNECTED
 		}else{
 			if t.status != CLOSED {
@@ -174,9 +176,14 @@ func (t *Tunnel) proc_ack(pkt *Packet) {
 	for len(t.sendbuf) != 0 && (t.sendbuf[0].seq - pkt.ack) < 0 {
 		p = t.sendbuf.Pop()
 
-		delta := int32(ti.Sub(p.t).Nanoseconds() / 1000000) - int32(t.rtt)
-		t.rtt = uint32(int32(t.rtt) + delta >> 3)
-		t.rttvar = uint32(int32(t.rttvar) + (abs(delta) - int32(t.rttvar)) >> 2)
+		if t.rtt == 0 {
+			t.rtt = uint32(ti.Sub(p.t).Nanoseconds() / 1000000) + 1
+			t.rttvar = t.rtt / 2
+		}else{
+			delta := int32(ti.Sub(p.t).Nanoseconds() / 1000000) - int32(t.rtt)
+			t.rtt = uint32(int32(t.rtt) + delta >> 3)
+			t.rttvar = uint32(int32(t.rttvar) + (abs(delta) - int32(t.rttvar)) >> 2)
+		}
 
 		t.stat.sendpkt += 1
 		t.stat.sendsize += uint64(len(p.content))
@@ -184,6 +191,7 @@ func (t *Tunnel) proc_ack(pkt *Packet) {
 
 		put_packet(p)
 	}
+	t.rto = int32(t.rtt + t.rttvar << 2)
 
 	switch {
 	case t.sack_count >= 2 || t.retrans_count != 0:
@@ -197,12 +205,10 @@ func (t *Tunnel) proc_ack(pkt *Packet) {
 	t.logger.Debug("congestion adjust, ack,", t.cwnd, t.ssthresh)
 
 	if t.timer.rexmt != 0 {
-		if len(t.sendbuf) == 0 {
-			t.timer.rexmt = 0
-		}else{
-			t.timer.rexmt = int32(t.rtt + t.rttvar << 2)
+		if len(t.sendbuf) != 0 {
+			t.timer.rexmt = t.rto
 			t.timer.rexmt -= int32(ti.Sub(t.sendbuf[0].t) / 1000000)
-		}
+		}else{ t.timer.rexmt = 0 }
 	}
 	return 
 }
@@ -272,6 +278,6 @@ LOOP:
 		if (p.seq - id) >= 0 { break }
 		t.send_packet(p)
 	}
-	t.timer.rexmt = int32(t.rtt + t.rttvar << 2) * (1 << t.retrans_count)
+	t.timer.rexmt = t.rto * (1 << t.retrans_count)
 	return
 }

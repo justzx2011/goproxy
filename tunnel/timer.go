@@ -133,6 +133,6 @@ func (t *Tunnel) on_retrans () (err error) {
 	t.ssthresh = max32(int32(float32(inairlen)*BACKRATE), 2*SMSS)
 	t.logger.Debug("congestion adjust, resend,", t.cwnd, t.ssthresh)
 
-	t.timer.rexmt = int32(t.rtt + t.rttvar << 2) * (1 << t.retrans_count)
+	t.timer.rexmt = t.rto * (1 << t.retrans_count)
 	return
 }

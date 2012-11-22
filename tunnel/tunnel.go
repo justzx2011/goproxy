@@ -34,6 +34,7 @@ type Tunnel struct {
 	// counter
 	rtt uint32
 	rttvar uint32
+	rto int32
 	cwnd int32
 	ssthresh int32
 	sack_count uint
@@ -63,14 +64,11 @@ func NewTunnel(remote *net.UDPAddr, name string) (t *Tunnel) {
 	t.recvbuf = make(PacketQueue, 0)
 	t.sendwnd = 4*SMSS
 
-	t.rtt = 200
-	t.rttvar = 200
 	t.cwnd = int32(min(4*SMSS, max(2*SMSS, 4380)))
 	t.ssthresh = WINDOWSIZE
 
 	t.c_read = make(chan uint8)
 	t.c_wrin = make(chan *Packet, 3)
-	t.c_wrout = t.c_wrin
 	t.c_event = make(chan uint8, 3)
 	t.c_connect = make(chan uint8, 1)
 	t.c_close = make(chan uint8)
@@ -94,8 +92,8 @@ func (t *Tunnel) Dump() string {
 
 func (t Tunnel) DumpCounter () string {
 	return fmt.Sprintf(
-		"rtt: %d, var: %d, cwnd: %d, ssth: %d, sack: %d, retrans: %d",
-		t.rtt, t.rttvar, t.cwnd, t.ssthresh, t.sack_count, t.retrans_count)
+		"rto: %d, cwnd: %d, ssth: %d, sack: %d, retrans: %d",
+		t.rto, t.cwnd, t.ssthresh, t.sack_count, t.retrans_count)
 }
 
 func (t *Tunnel) main () {

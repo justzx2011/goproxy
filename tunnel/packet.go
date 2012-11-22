@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const HEADERSIZE = 17
+const HEADERSIZE = 16
 
 var c_pktfree chan *Packet
 
@@ -34,10 +34,10 @@ func put_packet (p *Packet) {
 
 type Packet struct {
 	flag uint8
-	window uint16
+	window uint32
 	seq int32
 	ack int32
-	crc uint32
+	crc uint16
 	content []byte
 
 	buf [SMSS+200]byte
@@ -57,11 +57,11 @@ func (p *Packet) read_status (t *Tunnel, flag uint8) {
 	l := t.readbuf.Len()
 	t.readlck.Unlock()
 	if WINDOWSIZE > l {
-		p.window = uint16(WINDOWSIZE - l)
+		p.window = uint32(WINDOWSIZE - l)
 	}else{ p.window = 0 }
 	p.seq = t.sendseq
 	p.ack = t.recvseq
-	p.crc = crc32.ChecksumIEEE(p.content)
+	p.crc = uint16(crc32.ChecksumIEEE(p.content) & 0xffff)
 }
 
 func (p *Packet) String() string {
@@ -75,10 +75,9 @@ func (p *Packet) Pack() (n int, err error) {
 		fmt.Println(p)
 		return 0, fmt.Errorf("packet too large, %d/%d", len(p.content), SMSS)
 	}
-	err = binary.Write(buf, binary.BigEndian, &p.flag)
-	// if err != nil { return }
-	if err != nil { panic(err) }
-	err = binary.Write(buf, binary.BigEndian, &p.window)
+
+	h := uint32(p.flag) << 24 + p.window & 0xffffff
+	err = binary.Write(buf, binary.BigEndian, &h)
 	// if err != nil { return }
 	if err != nil { panic(err) }
 	err = binary.Write(buf, binary.BigEndian, &p.seq)
@@ -100,12 +99,12 @@ func (p *Packet) Unpack(n int) (err error) {
 	var l uint16
 	buf := bytes.NewBuffer(p.buf[:n])
 
-	err = binary.Read(buf, binary.BigEndian, &p.flag)
-	// if err != nil { return }
-	if err != nil { panic(err) }
 	err = binary.Read(buf, binary.BigEndian, &p.window)
 	// if err != nil { return }
 	if err != nil { panic(err) }
+	p.flag = uint8(p.window >> 24)
+	p.window = p.window & 0xffffff
+	
 	err = binary.Read(buf, binary.BigEndian, &p.seq)
 	// if err != nil { return }
 	if err != nil { panic(err) }
@@ -123,7 +122,7 @@ func (p *Packet) Unpack(n int) (err error) {
 	if buf.Len() != int(l) { return errors.New("packet broken") }
 	p.content = buf.Bytes()
 
-	if p.crc != crc32.ChecksumIEEE(p.content) {
+	if p.crc != uint16(crc32.ChecksumIEEE(p.content) & 0xffff) {
 		return fmt.Errorf("crc32 fault %x/%x %s",
 			p.crc, crc32.ChecksumIEEE(p.content), p.String())
 	}

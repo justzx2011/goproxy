@@ -48,7 +48,7 @@ func (t *Tunnel) send (flag uint8, pkt *Packet) {
 	pkt.t = time.Now()
 	if !t.sendbuf.Push(pkt) { panic(pkt) }
 
-	if t.timer.rexmt == 0 { t.timer.rexmt = int32(t.rtt + t.rttvar << 2) }
+	if t.timer.rexmt == 0 { t.timer.rexmt = t.rto }
 	return
 }
 
