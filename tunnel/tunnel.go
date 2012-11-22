@@ -151,7 +151,7 @@ func (t *Tunnel) on_event (ev uint8) (err error) {
 	switch ev {
 	case EV_CONNECT:
 		if t.status != CLOSED {
-			t.reset()
+			t.drop()
 			return fmt.Errorf("somebody try to connect, %s", t)
 		}
 		t.status = SYNSENT
@@ -199,7 +199,7 @@ func (t *Tunnel) isquit () (bool) {
 	return false
 }
 
-func (t *Tunnel) reset () {
+func (t *Tunnel) drop () {
 	t.send(RST, nil)
 	t.c_event <- EV_END
 }

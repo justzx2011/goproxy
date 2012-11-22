@@ -80,12 +80,13 @@ func (tt *TcpTimer) on_slow (t *Tunnel) (err error) {
 	tt.conn, trigger = tick_timer(tt.conn)
 	if trigger {
 		t.logger.Debug("timer connest")
-		t.reset()
+		t.drop()
 	}
 
 	tt.rexmt, trigger = tick_timer(tt.rexmt)
 	if trigger {
 		t.logger.Debug("timer retrans")
+		if tt.rexmt != 0 { panic("persist timer not 0 when rexmt timer on") }
 		err = t.on_retrans()
 		// if err != nil { return }
 		if err != nil { panic(err) }
@@ -93,6 +94,7 @@ func (tt *TcpTimer) on_slow (t *Tunnel) (err error) {
 
 	tt.persist, trigger = tick_timer(tt.persist)
 	if trigger {
+		if tt.rexmt != 0 { panic("rexmt timer not 0 when persist timer on") }
 		t.logger.Debug("timer persist")
 		t.send(0, nil)
 	}
@@ -100,13 +102,13 @@ func (tt *TcpTimer) on_slow (t *Tunnel) (err error) {
 	tt.keep, trigger = tick_timer(tt.keep)
 	if trigger {
 		t.logger.Debug("timer keepalive")
-		t.reset()
+		t.drop()
 	}
 
 	tt.finwait, trigger = tick_timer(tt.finwait)
 	if trigger {
 		t.logger.Debug("timer finwait")
-		t.reset()
+		t.drop()
 	}
 
 	tt.timewait, trigger = tick_timer(tt.timewait)
@@ -121,7 +123,7 @@ func (tt *TcpTimer) on_slow (t *Tunnel) (err error) {
 func (t *Tunnel) on_retrans () (err error) {
 	t.retrans_count += 1
 	if t.retrans_count > MAXRESEND {
-		t.reset()
+		t.drop()
 		t.logger.Warning("send packet more then maxretrans times")
 		return
 	}

@@ -120,7 +120,7 @@ func (t *Tunnel) proc_current (pkt *Packet) (ackneed bool, err error) {
 	case SYN:
 		if (pkt.flag & ACK) != 0 {
 			if t.status != SYNSENT {
-				t.reset()
+				t.drop()
 				t.logger.Err("SYN ACK status wrong,", t)
 				return
 			}
@@ -131,7 +131,7 @@ func (t *Tunnel) proc_current (pkt *Packet) (ackneed bool, err error) {
 			t.c_connect <- EV_CONNECTED
 		}else{
 			if t.status != CLOSED {
-				t.reset()
+				t.drop()
 				t.logger.Err("SYN status wrong,", t)
 				return
 			}
@@ -162,7 +162,7 @@ func (t *Tunnel) proc_current (pkt *Packet) (ackneed bool, err error) {
 			t.timer.set_close()
 			t.close_nowait()
 		default:
-			t.reset()
+			t.drop()
 			t.logger.Err("FIN status wrong,", t)
 		}
 	}

@@ -13,18 +13,20 @@ const (
 	WINDOWSIZE = 256 * 256 * 256 - 1
 	READBUFSIZE = 100
 	RESTARTACK = 3*16*1024
-	MAXRESEND = 7
+	MAXRESEND = 13
 	RETRANS_SACKCOUNT = 2
 	OPT_DELAYACK = false
 	BACKRATE = 0.8
 )
 
 const (
+	DAT = uint8(0x00)
+	SYN = uint8(0x01)
+	FIN = uint8(0x02)
+	RST = uint8(0x04)
+	// TODO: PST?
+	ACK = uint8(0x10)
 	SACK = uint8(0x80)
-	RST = uint8(0x08)
-	SYN = uint8(0x04)
-	ACK = uint8(0x02)
-	FIN = uint8(0x01)
 )
 
 const (
