@@ -5,7 +5,7 @@
 ## Keywords: 
 ## X-URL: 
 TARGET=goproxy
-DEBUGOPT=--loglevel DEBUG
+DEBUGOPT=--loglevel WARNING
 DEBUGSRV=--logfile buf:/tmp/server.log
 DEBUGCLI=--logfile buf:/tmp/client.log
 

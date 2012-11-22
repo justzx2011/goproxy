@@ -20,6 +20,13 @@ func (t *Tunnel) on_packet (pkt *Packet) (recycly bool, err error) {
 	}
 
 	diff := (pkt.seq - t.recvseq)
+	size := len(pkt.content)
+	if t.status == EST && pkt.flag == 0 && diff == 0 && size != 0 &&
+		(len(t.recvbuf) == 0 || t.recvbuf[0].seq != pkt.seq + int32(size)) {
+		t.proc_fast(pkt)
+		return true, nil
+	}
+
 	if diff >= 0 {
 		if (pkt.flag & ACK) != 0 { t.proc_ack(pkt) }
 		if (pkt.flag & SACK) != 0 {
@@ -65,16 +72,15 @@ func (t *Tunnel) on_packet (pkt *Packet) (recycly bool, err error) {
 	case diff == 0:
 		var ok bool
 		ackneed := false
-		for p = pkt; ; {
+		for p = pkt; ; p = t.recvbuf.Pop() {
 			ok, err = t.proc_current(p)
+			if err != nil { panic(err) }
 			ackneed = ackneed || ok
 			put_packet(p)
-			// if err != nil { return }
-			if err != nil { panic(err) }
 
-			if len(t.recvbuf) == 0 { break }
-			if t.recvbuf[0].seq != t.recvseq { break }
-			p = t.recvbuf.Pop()
+			if len(t.recvbuf) == 0 || (t.recvbuf[0].seq != t.recvseq) {
+				break
+			}
 		}
 
 		if ackneed || (t.recvack != t.recvseq) {
@@ -94,22 +100,26 @@ func (t *Tunnel) on_packet (pkt *Packet) (recycly bool, err error) {
 	return
 }
 
+func (t *Tunnel) proc_fast (pkt *Packet) {
+	t.readlck.Lock()
+	defer t.readlck.Unlock()
+	_, err := t.readbuf.Write(pkt.content)
+	if err != nil { panic(err) }
+	select {
+	case t.c_read <- 1:
+	default:
+	}
+	size := len(pkt.content)
+	t.recvseq += int32(size)
+	t.stat.recvsize += uint64(size)
+}
+
 func (t *Tunnel) proc_current (pkt *Packet) (ackneed bool, err error) {
 	t.sendwnd = int32(pkt.window)
 
 	switch {
 	case len(pkt.content) > 0:
-		t.readlck.Lock()
-		_, err = t.readbuf.Write(pkt.content)
-		t.readlck.Unlock()
-		// if err != nil { return }
-		if err != nil { panic(err) }
-		select {
-		case t.c_read <- 1:
-		default:
-		}
-		t.recvseq += int32(len(pkt.content))
-		t.stat.recvsize += uint64(len(pkt.content))
+		t.proc_fast(pkt)
 		return
 	case pkt.flag == 0: return true, nil
 	case pkt.flag != ACK: t.recvseq += 1
