@@ -9,7 +9,6 @@ import (
 const (
 	DROPFLAG = true
 	DROPRATE = 95
-	MAXPARELLELCONN = 800
 	SMSS = 1024 // Sender Maximum Segment Size
 	WINDOWSIZE = 65535
 	READBUFSIZE = 100
@@ -18,14 +17,6 @@ const (
 	RETRANS_SACKCOUNT = 2
 	OPT_DELAYACK = false
 	BACKRATE = 0.8
-)
-
-const (
-	TM_TICK = 100
-	TM_MSL = 30000
-	TM_CONNEST = 75000
-	TM_KEEPALIVE = 3600000
-	TM_FINWAIT = 10000
 )
 
 const (

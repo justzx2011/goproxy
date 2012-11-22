@@ -7,7 +7,6 @@ import (
 	"net"
 	"runtime"
 	"sync"
-	"time"
 	"../sutils"
 )
 
@@ -17,6 +16,7 @@ type Tunnel struct {
 	remote *net.UDPAddr
 	status uint8
 	stat Statistics
+	timer *TcpTimer
 
 	// communicate with conn loop
 	c_recv chan *Packet
@@ -38,16 +38,6 @@ type Tunnel struct {
 	ssthresh int32
 	sack_count uint
 	retrans_count uint
-
-	// timer
-	ticker <-chan time.Time
-	t_conn int32
-	t_rexmt int32
-	t_persist int32
-	t_keep int32
-	t_finwait int32
-	t_2msl int32
-	t_dack int32
 	
 	// communicate with conn
 	readlck sync.Mutex
@@ -65,6 +55,7 @@ func NewTunnel(remote *net.UDPAddr, name string) (t *Tunnel) {
 	t.logger = sutils.NewLogger(name)
 	t.remote = remote
 	t.status = CLOSED
+	t.timer = NewTimer()
 
 	t.c_recv = make(chan *Packet, 1)
 
@@ -76,10 +67,6 @@ func NewTunnel(remote *net.UDPAddr, name string) (t *Tunnel) {
 	t.rttvar = 200
 	t.cwnd = int32(min(4*SMSS, max(2*SMSS, 4380)))
 	t.ssthresh = WINDOWSIZE
-
-	t.ticker = time.Tick(TM_TICK * time.Millisecond)
-	t.t_conn = TM_CONNEST
-	t.t_keep = TM_KEEPALIVE
 
 	t.c_read = make(chan uint8)
 	t.c_wrin = make(chan *Packet, 3)
@@ -125,8 +112,8 @@ QUIT:
 			if ev == EV_END { break QUIT }
 			t.logger.Debug("on event", ev)
 			err = t.on_event(ev)
-		case <- t.ticker:
-			err = t.on_timer()
+		case <- t.timer.ticker:
+			err = t.timer.on_timer(t)
 			// if err != nil { t.logger.Err(err) }
 			if err != nil { panic(err) }
 			continue
@@ -135,7 +122,7 @@ QUIT:
 			if recycly { put_packet(pkt) }
 			t.check_windows_block()
 		case pkt = <- t.c_wrout:
-			err = t.send(0, pkt)
+			t.send(0, pkt)
 			t.check_windows_block()
 		}
 		// if err != nil { t.logger.Err(err) }
@@ -149,7 +136,11 @@ func (t *Tunnel) check_windows_block () {
 	inairlen := int32(0)
 	if len(t.sendbuf) > 0 { inairlen = t.sendseq - t.sendbuf[0].seq }
 	switch {
-	case (inairlen >= t.sendwnd) || (inairlen >= t.cwnd):
+	case inairlen >= t.sendwnd:
+		t.logger.Debug("blocking,", inairlen, t.sendwnd, t.cwnd, t.ssthresh)
+		t.c_wrout = nil
+		t.timer.persist = TM_PERSIST
+	case inairlen >= t.cwnd:
 		t.logger.Debug("blocking,", inairlen, t.sendwnd, t.cwnd, t.ssthresh)
 		t.c_wrout = nil
 	case t.status == EST && t.c_wrout == nil:
@@ -162,93 +153,19 @@ func (t *Tunnel) on_event (ev uint8) (err error) {
 	switch ev {
 	case EV_CONNECT:
 		if t.status != CLOSED {
-			err = t.send(RST, nil)
-			if err != nil { panic(err) }
-			t.c_event <- EV_END
+			t.reset()
 			return fmt.Errorf("somebody try to connect, %s", t)
 		}
 		t.status = SYNSENT
-		err = t.send(SYN, nil)
-		if err != nil { panic(err) }
+		t.send(SYN, nil)
 	case EV_CLOSE:
 		if t.status != EST { return }
-		t.t_finwait = TM_FINWAIT
+		t.timer.finwait = TM_FINWAIT
 		t.status = FINWAIT1
 		t.c_wrout = nil
-		err = t.send(FIN, nil)
-		if err != nil { panic(err) }
-	case EV_READ:
-		err = t.send(ACK, nil)
-		if err != nil { panic(err) }
+		t.send(FIN, nil)
+	case EV_READ: t.send(ACK, nil)
 	default: return fmt.Errorf("unknown event %d", ev)
-	}
-	return
-}
-
-func tick_timer(t int32) (int32, bool) {
-	if t == 0 { return 0, false }
-	next := t - TM_TICK
-	if next <= 0 { return 0, true }
-	return next, false
-}
-
-func (t *Tunnel) on_timer () (err error) {
-	var trigger bool
-
-	t.t_conn, trigger = tick_timer(t.t_conn)
-	if trigger {
-		t.logger.Debug("timer connest")
-		t.c_event <- EV_END
-		err = t.send(RST, nil)
-		// if err != nil { return }
-		if err != nil { panic(err) }
-	}
-
-	t.t_rexmt, trigger = tick_timer(t.t_rexmt)
-	if trigger {
-		t.logger.Debug("timer retrans")
-		err = t.on_retrans()
-		// if err != nil { return }
-		if err != nil { panic(err) }
-	}
-
-	t.t_persist, trigger = tick_timer(t.t_persist)
-	if trigger {
-		t.logger.Debug("timer persist")
-		// TODO: 持续定时器
-		// err = t.on_retrans()
-	}
-
-	t.t_keep, trigger = tick_timer(t.t_keep)
-	if trigger {
-		t.logger.Debug("timer keepalive")
-		t.c_event <- EV_END
-		err = t.send(RST, nil)
-		// if err != nil { return }
-		if err != nil { panic(err) }
-	}
-
-	t.t_finwait, trigger = tick_timer(t.t_finwait)
-	if trigger {
-		t.logger.Debug("timer finwait")
-		t.c_event <- EV_END
-		err = t.send(RST, nil)
-		// if err != nil { return }
-		if err != nil { panic(err) }
-	}
-
-	t.t_2msl, trigger = tick_timer(t.t_2msl)
-	if trigger {
-		t.logger.Debug("timer timewait")
-		t.c_event <- EV_END
-	}
-
-	t.t_dack, trigger = tick_timer(t.t_dack)
-	if trigger {
-		t.logger.Debug("timer delayack")
-		err = t.send(ACK, nil)
-		// if err != nil { return }
-		if err != nil { panic(err) }
 	}
 	return
 }
@@ -282,4 +199,9 @@ func (t *Tunnel) isquit () (bool) {
 	default:
 	}
 	return false
+}
+
+func (t *Tunnel) reset () {
+	t.send(RST, nil)
+	t.c_event <- EV_END
 }

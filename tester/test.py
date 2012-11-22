@@ -10,7 +10,7 @@ from urlparse import urlparse
 from gevent import socket, pool
 import http, socks
 
-c = socks.socks5(('debox', 1081))(socket.socket)
+c = socks.socks5(('localhost', 1081))(socket.socket)
 # c = socket.socket
 def download(uri, tmp=False):
     url = urlparse(uri)

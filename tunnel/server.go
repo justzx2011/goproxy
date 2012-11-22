@@ -60,10 +60,6 @@ func (srv *Server) get_tunnel(remote *net.UDPAddr, pkt *Packet) (t *Tunnel, err 
 	t, ok = srv.dispatcher[remotekey]
 	if ok { return }
 
-	// if len(srv.dispatcher) > MAXPARELLELCONN {
-	// 	return nil, errors.New("too many connection")
-	// }
-
 	if pkt.flag != SYN {
 		return nil, errors.New("packet to unknow tunnel, " + remotekey)
 	}

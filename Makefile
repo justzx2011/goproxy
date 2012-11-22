@@ -5,9 +5,9 @@
 ## Keywords: 
 ## X-URL: 
 TARGET=goproxy
-DEBUGOPT=--loglevel WARNING
-# DEBUGSRV=--logfile buf:server.log
-# DEBUGCLI=--logfile buf:client.log
+DEBUGOPT=--loglevel DEBUG
+DEBUGSRV=--logfile buf:/tmp/server.log
+DEBUGCLI=--logfile buf:/tmp/client.log
 
 all: clean build
 
@@ -18,10 +18,10 @@ testlog: logger
 	./logger --listen :4455 --loglevel DEBUG
 
 server: goproxy
-	./goproxy --mode udpsrv --listen :8899 $(DEBUGOPT) $(DEBUGSRV)
+	./goproxy --mode udpsrv --listen :8899 $(DEBUGOPT) $(DEBUGSRV) > /tmp/srv.log
 
 client: goproxy
-	./goproxy --mode udpcli --listen :1081 $(DEBUGOPT) $(DEBUGCLI) localhost:8899
+	./goproxy --mode udpcli --listen :1081 $(DEBUGOPT) $(DEBUGCLI) localhost:8899 > /tmp/cli.log
 
 install:
 	install -d $(DESTDIR)/usr/bin/

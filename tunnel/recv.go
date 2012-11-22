@@ -3,7 +3,6 @@ package tunnel
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"time"
 )
@@ -13,7 +12,7 @@ func (t *Tunnel) on_packet (pkt *Packet) (recycly bool, err error) {
 
 	t.logger.Debug("recv", pkt)
 	t.stat.recvpkt += 1
-	t.t_keep = TM_KEEPALIVE
+	t.timer.keep = TM_KEEPALIVE
 
 	if (pkt.flag & RST) != 0 {
 		t.c_event <- EV_END
@@ -35,20 +34,18 @@ func (t *Tunnel) on_packet (pkt *Packet) (recycly bool, err error) {
 		if (pkt.flag & SYN) != 0 { t.c_event <- EV_END }
 		return true, nil
 	case SYNRCVD:
-		t.t_conn = 0
+		t.timer.conn = 0
 		t.status = EST
 	case FINWAIT1:
 		if pkt.flag == ACK && pkt.ack == t.sendseq {
 			t.status = FINWAIT2
-			err = t.send(FIN, nil)
-			if err != nil { panic(err) }
+			t.send(FIN, nil)
 			return true, nil
 		}
 	case CLOSING:
 		if pkt.flag == ACK && pkt.ack == t.sendseq {
 			t.status = TIMEWAIT
-			t.t_finwait = 0
-			t.t_2msl = 2*TM_MSL
+			t.timer.set_close()
 			t.close_nowait()
 			return true, nil
 		}
@@ -62,14 +59,14 @@ func (t *Tunnel) on_packet (pkt *Packet) (recycly bool, err error) {
 
 	switch {
 	case diff < 0:
-		if pkt.flag != ACK {
-			err = t.send(ACK, nil)
-			if err != nil { panic(err) }
-		}
+		if pkt.flag != ACK { t.send(ACK, nil) }
 		return true, nil
 	case diff == 0:
+		var ok bool
+		ackneed := false
 		for p = pkt; ; {
-			err = t.proc_current(p)
+			ok, err = t.proc_current(p)
+			ackneed = ackneed || ok
 			put_packet(p)
 			// if err != nil { return }
 			if err != nil { panic(err) }
@@ -79,14 +76,10 @@ func (t *Tunnel) on_packet (pkt *Packet) (recycly bool, err error) {
 			p = t.recvbuf.Pop()
 		}
 
-		if t.recvseq != t.recvack && t.t_dack == 0 {
+		if ackneed || (t.recvack != t.recvseq) {
 			if OPT_DELAYACK {
-				t.t_dack = 1
-			}else{
-				err = t.send(ACK, nil)
-				// if err != nil { return }
-				if err != nil { panic(err) }
-			}
+				if t.timer.dack == 0 { t.timer.dack = 1 }
+			}else{ t.send(ACK, nil) }
 		}
 	case diff > 0:
 		if (len(pkt.content) > 0) || (pkt.flag != ACK) {
@@ -100,7 +93,7 @@ func (t *Tunnel) on_packet (pkt *Packet) (recycly bool, err error) {
 	return
 }
 
-func (t *Tunnel) proc_current (pkt *Packet) (err error) {
+func (t *Tunnel) proc_current (pkt *Packet) (ackneed bool, err error) {
 	t.sendwnd = int32(pkt.window)
 
 	switch {
@@ -116,6 +109,8 @@ func (t *Tunnel) proc_current (pkt *Packet) (err error) {
 		}
 		t.recvseq += int32(len(pkt.content))
 		t.stat.recvsize += uint64(len(pkt.content))
+		return
+	case pkt.flag == 0: return true, nil
 	case pkt.flag != ACK: t.recvseq += 1
 	default: return
 	}
@@ -124,65 +119,48 @@ func (t *Tunnel) proc_current (pkt *Packet) (err error) {
 	case SYN:
 		if (pkt.flag & ACK) != 0 {
 			if t.status != SYNSENT {
-				err = t.send(RST, nil)
-				if err != nil { panic(err) }
-				t.c_event <- EV_END
-				return fmt.Errorf("SYN ACK status wrong, %s", t)
+				t.reset()
+				t.logger.Err("SYN ACK status wrong,", t)
+				return
 			}
-			t.t_conn = 0
+			t.timer.conn = 0
 			t.status = EST
-			err = t.send(ACK, nil)
-			// if err != nil { return }
-			if err != nil { panic(err) }
+			t.send(ACK, nil)
 			t.c_connect <- EV_CONNECTED
 		}else{
 			if t.status != CLOSED {
-				err = t.send(RST, nil)
-				if err != nil { panic(err) }
-				t.c_event <- EV_END
-				return fmt.Errorf("SYN status wrong, %s", t)
+				t.reset()
+				t.logger.Err("SYN status wrong,", t)
+				return
 			}
 			t.status = SYNRCVD
-			err = t.send(SYN | ACK, nil)
-			if err != nil { panic(err) }
+			t.send(SYN | ACK, nil)
 		}
 	case FIN:
 		switch t.status {
-		case TIMEWAIT:
-			err = t.send(ACK, nil)
-			if err != nil { panic(err) }
+		case TIMEWAIT: t.send(ACK, nil)
 		case EST:
 			t.status = LASTACK
-			err = t.send(FIN | ACK, nil)
-			if err != nil { panic(err) }
+			t.send(FIN | ACK, nil)
 			t.c_wrout = nil
 			return
 		case FINWAIT1:
 			if len(t.sendbuf) == 0 {
 				t.status = TIMEWAIT
-				err = t.send(ACK, nil)
-				// if err != nil { return }
-				if err != nil { panic(err) }
-				t.t_finwait = 0
-				t.t_2msl = 2*TM_MSL
+				t.send(ACK, nil)
+				t.timer.set_close()
 				t.close_nowait()
 			}else{
 				t.status = CLOSING
-				err = t.send(ACK, nil)
-				if err != nil { panic(err) }
+				t.send(ACK, nil)
 			}
 		case FINWAIT2:
 			t.status = TIMEWAIT
-			err = t.send(ACK, nil)
-			// if err != nil { return }
-			if err != nil { panic(err) }
-			t.t_finwait = 0
-			t.t_2msl = 2*TM_MSL
+			t.send(ACK, nil)
+			t.timer.set_close()
 			t.close_nowait()
 		default:
-			err = t.send(RST, nil)
-			if err != nil { panic(err) }
-			t.c_event <- EV_END
+			t.reset()
 			t.logger.Err("FIN status wrong,", t)
 		}
 	}
@@ -218,12 +196,12 @@ func (t *Tunnel) proc_ack(pkt *Packet) {
 	t.retrans_count = 0
 	t.logger.Debug("congestion adjust, ack,", t.cwnd, t.ssthresh)
 
-	if t.t_rexmt != 0 {
+	if t.timer.rexmt != 0 {
 		if len(t.sendbuf) == 0 {
-			t.t_rexmt = 0
+			t.timer.rexmt = 0
 		}else{
-			t.t_rexmt = int32(t.rtt + t.rttvar << 2)
-			t.t_rexmt -= int32(ti.Sub(t.sendbuf[0].t) / 1000000)
+			t.timer.rexmt = int32(t.rtt + t.rttvar << 2)
+			t.timer.rexmt -= int32(ti.Sub(t.sendbuf[0].t) / 1000000)
 		}
 	}
 	return 
@@ -278,23 +256,22 @@ LOOP:
 	// FIXME: sack会一遍遍的重传已经发过的包
 	t.sack_count += 1
 	switch {
+	case t.sack_count < RETRANS_SACKCOUNT: return
 	case t.sack_count == RETRANS_SACKCOUNT:
-		t.logger.Debug("first sack resend")
-
 		inairlen := int32(0)
 		if len(t.sendbuf) > 0 { inairlen = t.sendseq - t.sendbuf[0].seq }
 		t.ssthresh = max32(int32(float32(inairlen)*BACKRATE), 2*SMSS)
 		t.cwnd = t.ssthresh + 3*SMSS
 		t.logger.Debug("congestion adjust, first sack,", t.cwnd, t.ssthresh)
-
-		t.resend(id, true)
 	case t.sack_count > RETRANS_SACKCOUNT:
-		t.logger.Debug("sack resend")
 		t.cwnd += SMSS
 		t.logger.Debug("congestion adjust, sack,", t.cwnd, t.ssthresh)
-
-		t.resend(id, true)
 	}
 
+	for _, p := range t.sendbuf {
+		if (p.seq - id) >= 0 { break }
+		t.send_packet(p)
+	}
+	t.timer.rexmt = int32(t.rtt + t.rttvar << 2) * (1 << t.retrans_count)
 	return
 }

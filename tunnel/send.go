@@ -3,7 +3,6 @@ package tunnel
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"math/rand"
 	"time"
 )
@@ -18,15 +17,12 @@ func (t *Tunnel) send_sack () (err error) {
 		binary.Write(buf, binary.BigEndian, p.seq)
 	}
 	pkt.content = buf.Bytes()
-	err = t.send(SACK, pkt)
-	if err != nil { panic(err) }
+	t.send(SACK, pkt)
 	return
 }
 
-func (t *Tunnel) send (flag uint8, pkt *Packet) (err error) {
-	if t.status != EST && flag == 0 {
-		return fmt.Errorf("can't send data, %s, pkt: %s", t, DumpFlag(flag))
-	}
+func (t *Tunnel) send (flag uint8, pkt *Packet) {
+	if t.status != EST && flag == 0 { panic(flag) }
 
 	if pkt == nil {
 		pkt = get_packet()
@@ -38,7 +34,7 @@ func (t *Tunnel) send (flag uint8, pkt *Packet) (err error) {
 
 	t.send_packet(pkt)
 	t.recvack = t.recvseq
-	if t.t_dack != 0 { t.t_dack = 0 }
+	if t.timer.dack != 0 { t.timer.dack = 0 }
 
 	// TODO: 不加入sendbuf的pkt的回收
 	// 不能直接回收，会导致发送时有问题
@@ -50,8 +46,9 @@ func (t *Tunnel) send (flag uint8, pkt *Packet) (err error) {
 	}
 
 	pkt.t = time.Now()
-	t.sendbuf.Push(pkt)
-	if t.t_rexmt == 0 { t.t_rexmt = int32(t.rtt + t.rttvar << 2) }
+	if !t.sendbuf.Push(pkt) { panic(pkt) }
+
+	if t.timer.rexmt == 0 { t.timer.rexmt = int32(t.rtt + t.rttvar << 2) }
 	return
 }
 
@@ -64,34 +61,5 @@ func (t *Tunnel) send_packet(pkt *Packet) {
 	}else{
 		t.c_send <- &SendBlock{t.remote, pkt}
 	}
-	return
-}
-
-func (t *Tunnel) resend (stopid int32, stop bool) {
-	for _, p := range t.sendbuf {
-		if stop && (p.seq - stopid) >= 0 { return }
-		t.send_packet(p)
-	}
-	return
-}
-
-func (t *Tunnel) on_retrans () (err error) {
-	t.retrans_count += 1
-	if t.retrans_count > MAXRESEND {
-		t.logger.Warning("send packet more then maxretrans times")
-		err = t.send(RST, nil)
-		if err != nil { panic(err) }
-		t.c_event <- EV_END
-		return
-	}
-
-	t.resend(0, false)
-
-	inairlen := int32(0)
-	if len(t.sendbuf) > 0 { inairlen = t.sendseq - t.sendbuf[0].seq }
-	t.ssthresh = max32(int32(float32(inairlen)*BACKRATE), 2*SMSS)
-	t.logger.Debug("congestion adjust, resend,", t.cwnd, t.ssthresh)
-
-	t.t_rexmt = int32(t.rtt + t.rttvar << 2) * (1 << t.retrans_count)
 	return
 }
