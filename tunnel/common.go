@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	DROPFLAG = true
+	DROPFLAG = false
 	DROPRATE = 95
 	MSS = 1024 // Sender Maximum Segment Size
 	WINDOWSIZE = 128 * 256 * 256 * 256 - 1
@@ -15,18 +15,7 @@ const (
 	RESTARTACK = 3*16*1024
 	MAXRESEND = 13
 	RETRANS_SACKCOUNT = 2
-	OPT_DELAYACK = false
 	BACKRATE = 0.8
-)
-
-const (
-	DAT = uint8(0x00)
-	SYN = uint8(0x01)
-	FIN = uint8(0x02)
-	RST = uint8(0x04)
-	// TODO: PST?
-	ACK = uint8(0x10)
-	SACK = uint8(0x80)
 )
 
 const (
@@ -66,19 +55,11 @@ func DumpStatus(st uint8) string {
 	return "UNKNOWN"
 }
 
-func DumpFlag(flag uint8) (r string) {
-	var rs []string
-	if (flag & SACK) != 0 { rs = append(rs, "SACK") }
-	if (flag & RST) != 0 { rs = append(rs, "RST") }
-	if (flag & SYN) != 0 { rs = append(rs, "SYN") }
-	if (flag & ACK) != 0 { rs = append(rs, "ACK") }
-	if (flag & FIN) != 0 { rs = append(rs, "FIN") }
-	r = strings.Join(rs, "|")
-	if r == "" { return "NON" }
-	return
-}
-
 type PacketQueue []*Packet
+
+func (pq *PacketQueue) Front() (pkt *Packet) {
+	return (*pq)[0]
+}
 
 func (pq *PacketQueue) Push(pkt *Packet) (ok bool) {
 	var i int

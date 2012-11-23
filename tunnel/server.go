@@ -1,8 +1,8 @@
 package tunnel
 
 import (
-	"errors"
 	"fmt"
+	"hash/crc32"
 	"os"
 	"net"
 	"runtime/pprof"
@@ -63,7 +63,16 @@ func (srv *Server) get_tunnel(remote *net.UDPAddr, pkt *Packet) (t *Tunnel, err 
 	if ok { return }
 
 	if pkt.flag != SYN {
-		return nil, errors.New("packet to unknow tunnel, " + remotekey)
+		logsrv.Warning("packet to unknow tunnel,", remotekey)
+		p := get_packet()
+		p.content = p.buf[HEADERSIZE:HEADERSIZE]
+		p.flag = RST
+		p.window = 0
+		p.seq = 0
+		p.ack = pkt.seq
+		p.crc = uint16(crc32.ChecksumIEEE(p.content) & 0xffff)
+		srv.c_send <- &SendBlock{remote, p}
+		return nil, nil
 	}
 
 	t = NewTunnel(remote, fmt.Sprintf("%d_srv", remote.Port))
@@ -136,7 +145,7 @@ func UdpServer (addr string, handler func (net.Conn) (error)) (err error) {
 		statsrv.recvsize += uint64(n)
 		t.c_recv <- pkt
 
-		logsrv.Debug("stat srv", statsrv)
+		// logsrv.Debug("stat srv", statsrv)
 	}
 	return
 }

@@ -15,5 +15,8 @@ import (
 )
 
 func main () {
-	fmt.Println(1<<0)
+	var c chan uint8
+	c = nil
+	b := <- c
+	fmt.Println(b)
 }

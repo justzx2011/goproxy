@@ -5,7 +5,7 @@
 ## Keywords: 
 ## X-URL: 
 TARGET=goproxy
-DEBUGOPT=--loglevel INFO
+DEBUGOPT=--loglevel DEBUG
 DEBUGSRV=--logfile buf:/tmp/server.log
 DEBUGCLI=--logfile buf:/tmp/client.log
 
@@ -23,11 +23,11 @@ clean:
 
 server: goproxy
 	rm -f /tmp/server.log /tmp/srv.log
-	./goproxy --mode udpsrv --listen :8899 $(DEBUGOPT) $(DEBUGSRV) > /tmp/srv.log
+	./goproxy --mode udpsrv --listen :8899 $(DEBUGOPT) $(DEBUGSRV) 2&> /tmp/srv.log
 
 client: goproxy
 	rm -f /tmp/client.log /tmp/cli.log
-	./goproxy --mode udpcli --listen :1081 $(DEBUGOPT) $(DEBUGCLI) localhost:8899 > /tmp/cli.log
+	./goproxy --mode udpcli --listen :1081 $(DEBUGOPT) $(DEBUGCLI) localhost:8899 2&> /tmp/cli.log
 
 goproxy: goproxy.go
 	go build -o $@ $^

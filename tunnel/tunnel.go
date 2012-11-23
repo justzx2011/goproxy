@@ -17,27 +17,27 @@ type Tunnel struct {
 	timer *TcpTimer
 
 	// communicate with conn loop
-	c_recv chan *Packet
-	c_send chan *SendBlock
+	c_recv chan *Packet // recv from network
+	c_send chan *SendBlock // send to network
 	onclose func ()
 
 	// basic status
 	sendseq int32
 	recvseq int32
-	recvack int32
 	sendbuf PacketQueue
 	recvbuf PacketQueue
-	sendwnd int32
 
 	// counter
-	rtt uint32
-	rttvar uint32
-	rto int32
-	cwnd int32
-	ssthresh int32
-	sack_count uint
-	sack_sent map[int32]uint8
-	retrans_count uint
+	rtt uint32 // Round Trip Time
+	rttvar uint32 // var of Round Trip Time
+	rto int32 // Retransmission TimeOut
+	recent int32 // 已经处理过的最后一个nettick
+	sendwnd int32 // 接收方窗口
+	cwnd int32 // 拥塞窗口
+	ssthresh int32 // 拥塞窗口阀值
+	sack_count uint // 当前连续接收了几个sack
+	sack_sent map[int32]uint8 // 响应sack过程中，发送了哪些packet
+	retrans_count uint // 当前连续发生了几次retransmission
 	
 	// communicate with conn
 	readlck sync.Mutex
@@ -61,8 +61,8 @@ func NewTunnel(remote *net.UDPAddr, name string) (t *Tunnel) {
 
 	t.sendbuf = make(PacketQueue, 0)
 	t.recvbuf = make(PacketQueue, 0)
-	t.sendwnd = 10*MSS
 
+	t.sendwnd = 10*MSS
 	t.cwnd = 10*MSS
 	t.ssthresh = WINDOWSIZE
 
@@ -97,7 +97,6 @@ func (t Tunnel) DumpCounter () string {
 
 func (t *Tunnel) main () {
 	var err error
-	var recycly bool
 	var ev uint8
 	var pkt *Packet
 	defer t.on_quit()
@@ -109,20 +108,20 @@ QUIT:
 			if ev == EV_END { break QUIT }
 			t.logger.Debug("on event", ev)
 			err = t.on_event(ev)
-		case <- t.timer.ticker:
-			err = t.timer.on_timer(t)
-			// if err != nil { t.logger.Err(err) }
 			if err != nil { panic(err) }
+		case <- t.timer.ticker:
+			t.timer.on_timer(t)
 			continue
 		case pkt = <- t.c_recv:
-			recycly, err = t.on_packet(pkt)
-			if recycly { put_packet(pkt) }
+			err = t.on_packet(pkt)
 			t.check_windows_block()
 		case pkt = <- t.c_wrout:
 			t.send(0, pkt)
 			t.check_windows_block()
 		}
-		// if err != nil { t.logger.Err(err) }
+		// FIXME: 高速网络中，rtt的速度太快，导致retrans调用来不及跟踪
+		// FIXME: to start this, tick_timer should change
+		// if tt.rexmt != 0 { t.timer.on_fast(t) }
 		if err != nil { panic(err) }
 		t.logger.Debug("loop", t)
 	}
@@ -130,7 +129,7 @@ QUIT:
 
 func (t *Tunnel) check_windows_block () {
 	inairlen := int32(0)
-	if len(t.sendbuf) > 0 { inairlen = t.sendseq - t.sendbuf[0].seq }
+	if len(t.sendbuf) > 0 { inairlen = t.sendseq - t.sendbuf.Front().seq }
 	switch {
 	case inairlen >= t.sendwnd:
 		if t.c_wrout != nil {
@@ -153,8 +152,8 @@ func (t *Tunnel) on_event (ev uint8) (err error) {
 	switch ev {
 	case EV_CONNECT:
 		if t.status != CLOSED {
-			t.drop()
-			return fmt.Errorf("somebody try to connect, %s", t)
+			t.drop("somebody try to connect, " + t.String())
+			return
 		}
 		t.status = SYNSENT
 		t.send(SYN, nil)
@@ -201,7 +200,8 @@ func (t *Tunnel) isquit () (bool) {
 	return false
 }
 
-func (t *Tunnel) drop () {
+func (t *Tunnel) drop (s string) {
 	t.send(RST, nil)
 	t.c_event <- EV_END
+	t.logger.Info(s)
 }

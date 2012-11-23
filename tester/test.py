@@ -66,11 +66,13 @@ def initlog(lv, logfile=None):
 
 def main():
     initlog(logging.INFO)
-    optlist, args = getopt(sys.argv[1:], "b:ot")
+    optlist, args = getopt(sys.argv[1:], "b:o:t")
     optdict = dict(optlist)
     if not args: url = 'http://localhost/'
     else: url = args[0]
-    if '-o' in optdict: print download(url)
+    if '-o' in optdict:
+        with open(optdict['-o'], 'w') as fo:
+            fo.write(download(url))
     elif '-t' in optdict: print download(url, True)
     elif '-b': doloop(url, download(url), int(optdict['-b']))
 

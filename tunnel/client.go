@@ -84,7 +84,7 @@ func (c *Client) recver () {
 		statcli.recvsize += uint64(n)
 		c.t.c_recv <- pkt
 
-		logcli.Debug("stat cli", statcli)
+		// logcli.Debug("stat cli", statcli)
 	}
 }
 
@@ -93,11 +93,9 @@ func DialTunnel(addr string) (tc net.Conn, err error) {
 	var t *Tunnel
 
 	udpaddr, err := net.ResolveUDPAddr("udp", addr)
-	// if err != nil { return }
-	if err != nil { panic(err) }
+	if err != nil { return }
 	conn, err = net.DialUDP("udp", nil, udpaddr)
-	// if err != nil { return }
-	if err != nil { panic(err) }
+	if err != nil { return }
 	localaddr := conn.LocalAddr()
 	localstr := localaddr.String()
 
