@@ -5,23 +5,13 @@
 ## Keywords: 
 ## X-URL: 
 TARGET=goproxy
-DEBUGOPT=--loglevel WARNING
+DEBUGOPT=--loglevel INFO
 DEBUGSRV=--logfile buf:/tmp/server.log
 DEBUGCLI=--logfile buf:/tmp/client.log
 
 all: clean build
 
 build: $(TARGET)
-
-testlog: logger
-	rm -f *.log
-	./logger --listen :4455 --loglevel DEBUG
-
-server: goproxy
-	./goproxy --mode udpsrv --listen :8899 $(DEBUGOPT) $(DEBUGSRV) > /tmp/srv.log
-
-client: goproxy
-	./goproxy --mode udpcli --listen :1081 $(DEBUGOPT) $(DEBUGCLI) localhost:8899 > /tmp/cli.log
 
 install:
 	install -d $(DESTDIR)/usr/bin/
@@ -31,10 +21,22 @@ install:
 clean:
 	rm -f $(TARGET)
 
+server: goproxy
+	rm -f /tmp/server.log /tmp/srv.log
+	./goproxy --mode udpsrv --listen :8899 $(DEBUGOPT) $(DEBUGSRV) > /tmp/srv.log
+
+client: goproxy
+	rm -f /tmp/client.log /tmp/cli.log
+	./goproxy --mode udpcli --listen :1081 $(DEBUGOPT) $(DEBUGCLI) localhost:8899 > /tmp/cli.log
+
 goproxy: goproxy.go
 	go build -o $@ $^
 	strip $@
 	chmod 755 $@
+
+testlog: logger
+	rm -f *.log
+	./logger --listen :4455 --loglevel DEBUG
 
 logger: logger.go
 	go build -o $@ $^

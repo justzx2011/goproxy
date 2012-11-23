@@ -3,9 +3,7 @@ package tunnel
 import (
 	"bytes"
 	"fmt"
-	"math/rand"
 	"net"
-	"runtime"
 	"sync"
 	"../sutils"
 )
@@ -38,6 +36,7 @@ type Tunnel struct {
 	cwnd int32
 	ssthresh int32
 	sack_count uint
+	sack_sent map[int32]uint8
 	retrans_count uint
 	
 	// communicate with conn
@@ -62,9 +61,9 @@ func NewTunnel(remote *net.UDPAddr, name string) (t *Tunnel) {
 
 	t.sendbuf = make(PacketQueue, 0)
 	t.recvbuf = make(PacketQueue, 0)
-	t.sendwnd = 4*SMSS
+	t.sendwnd = 10*MSS
 
-	t.cwnd = int32(min(4*SMSS, max(2*SMSS, 4380)))
+	t.cwnd = 10*MSS
 	t.ssthresh = WINDOWSIZE
 
 	t.c_read = make(chan uint8)
@@ -125,8 +124,7 @@ QUIT:
 		}
 		// if err != nil { t.logger.Err(err) }
 		if err != nil { panic(err) }
-		t.logger.Debug("loop", t.Dump())
-		t.logger.Debug("stat", t.stat.String())
+		t.logger.Debug("loop", t)
 	}
 }
 
@@ -135,14 +133,18 @@ func (t *Tunnel) check_windows_block () {
 	if len(t.sendbuf) > 0 { inairlen = t.sendseq - t.sendbuf[0].seq }
 	switch {
 	case inairlen >= t.sendwnd:
-		t.logger.Debug("blocking,", inairlen, t.sendwnd, t.cwnd, t.ssthresh)
-		t.c_wrout = nil
-		t.timer.persist = TM_PERSIST
+		if t.c_wrout != nil {
+			t.logger.Info("blocking,", inairlen, t.sendwnd, t.cwnd, t.ssthresh)
+			t.c_wrout = nil
+			t.timer.persist = TM_PERSIST
+		}
 	case inairlen >= t.cwnd:
-		t.logger.Debug("blocking,", inairlen, t.sendwnd, t.cwnd, t.ssthresh)
-		t.c_wrout = nil
-	case t.status == EST && t.c_wrout == nil:
-		t.logger.Debug("restart,", inairlen, t.sendwnd, t.cwnd, t.ssthresh)
+		if t.c_wrout != nil {
+			t.logger.Info("blocking,", inairlen, t.sendwnd, t.cwnd, t.ssthresh)
+			t.c_wrout = nil
+		}
+	case t.c_wrout == nil && t.status == EST:
+		t.logger.Info("restart,", inairlen, t.sendwnd, t.cwnd, t.ssthresh)
 		t.c_wrout = t.c_wrin
 	}
 }
@@ -171,6 +173,7 @@ func (t *Tunnel) on_event (ev uint8) (err error) {
 func (t *Tunnel) on_quit () {
 	t.logger.Info("quit")
 	t.logger.Info(t.DumpCounter())
+	t.logger.Info(t.stat.String())
 
 	t.status = CLOSED
 	t.close_nowait()
@@ -179,7 +182,6 @@ func (t *Tunnel) on_quit () {
 	close(t.c_wrin)
 	if t.onclose != nil { t.onclose() }
 
-	if rand.Intn(100) > 95 { runtime.GC() }
 	for _, p := range t.sendbuf { put_packet(p) }
 	for _, p := range t.recvbuf { put_packet(p) }
 }

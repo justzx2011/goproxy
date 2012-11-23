@@ -13,7 +13,7 @@ func init () {
 func get_buf() (b []byte) {
 	select {
 	case b = <- c_buffree:
-	default: b = make([]byte, 2*SMSS)
+	default: b = make([]byte, 2*MSS)
 	}
 	return
 }

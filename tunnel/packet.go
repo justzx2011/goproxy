@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const HEADERSIZE = 16
+const HEADERSIZE = 17
 
 var c_pktfree chan *Packet
 
@@ -40,7 +40,7 @@ type Packet struct {
 	crc uint16
 	content []byte
 
-	buf [SMSS+200]byte
+	buf [MSS+HEADERSIZE]byte
 	t time.Time
 }
 
@@ -71,13 +71,15 @@ func (p *Packet) String() string {
 
 func (p *Packet) Pack() (n int, err error) {
 	buf := bytes.NewBuffer(p.buf[:0])
-	if len(p.content) > SMSS {
+	if len(p.content) > MSS {
 		fmt.Println(p)
-		return 0, fmt.Errorf("packet too large, %d/%d", len(p.content), SMSS)
+		return 0, fmt.Errorf("packet too large, %d/%d", len(p.content), MSS)
 	}
 
-	h := uint32(p.flag) << 24 + p.window & 0xffffff
-	err = binary.Write(buf, binary.BigEndian, &h)
+	err = binary.Write(buf, binary.BigEndian, &p.flag)
+	// if err != nil { return }
+	if err != nil { panic(err) }
+	err = binary.Write(buf, binary.BigEndian, &p.window)
 	// if err != nil { return }
 	if err != nil { panic(err) }
 	err = binary.Write(buf, binary.BigEndian, &p.seq)
@@ -99,11 +101,12 @@ func (p *Packet) Unpack(n int) (err error) {
 	var l uint16
 	buf := bytes.NewBuffer(p.buf[:n])
 
+	err = binary.Read(buf, binary.BigEndian, &p.flag)
+	// if err != nil { return }
+	if err != nil { panic(err) }
 	err = binary.Read(buf, binary.BigEndian, &p.window)
 	// if err != nil { return }
 	if err != nil { panic(err) }
-	p.flag = uint8(p.window >> 24)
-	p.window = p.window & 0xffffff
 	
 	err = binary.Read(buf, binary.BigEndian, &p.seq)
 	// if err != nil { return }
@@ -118,13 +121,13 @@ func (p *Packet) Unpack(n int) (err error) {
 	// if err != nil { return }
 	if err != nil { panic(err) }
 
-	if l > SMSS { return fmt.Errorf("packet too large, %d/%d", l, SMSS) }
+	if l > MSS { return fmt.Errorf("packet too large, %d/%d", l, MSS) }
 	if buf.Len() != int(l) { return errors.New("packet broken") }
 	p.content = buf.Bytes()
 
 	if p.crc != uint16(crc32.ChecksumIEEE(p.content) & 0xffff) {
 		return fmt.Errorf("crc32 fault %x/%x %s",
-			p.crc, crc32.ChecksumIEEE(p.content), p.String())
+			p.crc, crc32.ChecksumIEEE(p.content), p)
 	}
 	return
 }

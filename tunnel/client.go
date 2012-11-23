@@ -3,7 +3,9 @@ package tunnel
 import (
 	"fmt"
 	"net"
+	"os"
 	"strings"
+	"runtime/pprof"
 	"../sutils"
 )
 
@@ -82,7 +84,7 @@ func (c *Client) recver () {
 		statcli.recvsize += uint64(n)
 		c.t.c_recv <- pkt
 
-		logcli.Debug("stat cli", statcli.String())
+		logcli.Debug("stat cli", statcli)
 	}
 }
 
@@ -97,15 +99,17 @@ func DialTunnel(addr string) (tc net.Conn, err error) {
 	// if err != nil { return }
 	if err != nil { panic(err) }
 	localaddr := conn.LocalAddr()
+	localstr := localaddr.String()
 
-	name := fmt.Sprintf("%s_cli", strings.Split(localaddr.String(), ":")[1])
+	name := fmt.Sprintf("%s_cli", strings.Split(localstr, ":")[1])
 	t = NewTunnel(udpaddr, name)
 	t.c_send = make(chan *SendBlock, 1)
 	t.onclose = func () {
 		logcli.Info("close tunnel", localaddr)
 		conn.Close()
-		delete(connlog, localaddr.String())
+		delete(connlog, localstr)
 		logcli.Debug(connlog)
+		pprof.StopCPUProfile()
 	}
 
 	c := &Client{t, conn, name}
@@ -115,6 +119,11 @@ func DialTunnel(addr string) (tc net.Conn, err error) {
 	t.c_event <- EV_CONNECT
 	<- t.c_connect
 	logcli.Info("create tunnel", localaddr)
-	connlog[localaddr.String()] = t
+	connlog[localstr] = t
+
+        fo, err := os.Create("/tmp/srv.prof")
+        if err != nil { panic(err) }
+        pprof.StartCPUProfile(fo)
+
 	return NewTunnelConn(t), nil
 }

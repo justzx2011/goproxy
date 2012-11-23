@@ -23,14 +23,17 @@ func (t *Tunnel) on_packet (pkt *Packet) (recycly bool, err error) {
 	size := len(pkt.content)
 	if t.status == EST && pkt.flag == 0 && diff == 0 && size != 0 &&
 		(len(t.recvbuf) == 0 || t.recvbuf[0].seq != pkt.seq + int32(size)) {
-		t.proc_fast(pkt)
+		t.recv_data(pkt)
+		if OPT_DELAYACK {
+			if t.timer.dack == 0 { t.timer.dack = 1 }
+		}else{ t.send(ACK, nil) }
 		return true, nil
 	}
 
 	if diff >= 0 {
-		if (pkt.flag & ACK) != 0 { t.proc_ack(pkt) }
+		if (pkt.flag & ACK) != 0 { t.recv_ack(pkt) }
 		if (pkt.flag & SACK) != 0 {
-			err = t.proc_sack(pkt)
+			err = t.recv_sack(pkt)
 			if err != nil { panic(err) }
 			return true, nil
 		}
@@ -100,7 +103,7 @@ func (t *Tunnel) on_packet (pkt *Packet) (recycly bool, err error) {
 	return
 }
 
-func (t *Tunnel) proc_fast (pkt *Packet) {
+func (t *Tunnel) recv_data (pkt *Packet) {
 	t.readlck.Lock()
 	defer t.readlck.Unlock()
 	_, err := t.readbuf.Write(pkt.content)
@@ -119,7 +122,7 @@ func (t *Tunnel) proc_current (pkt *Packet) (ackneed bool, err error) {
 
 	switch {
 	case len(pkt.content) > 0:
-		t.proc_fast(pkt)
+		t.recv_data(pkt)
 		return
 	case pkt.flag == 0: return true, nil
 	case pkt.flag != ACK: t.recvseq += 1
@@ -179,20 +182,23 @@ func (t *Tunnel) proc_current (pkt *Packet) (ackneed bool, err error) {
 	return
 }
 
-func (t *Tunnel) proc_ack(pkt *Packet) {
+func (t *Tunnel) recv_ack(pkt *Packet) {
 	var p *Packet
 	ti := time.Now()
 
+	resend_flag := t.sack_count >= 2 || t.retrans_count != 0
 	for len(t.sendbuf) != 0 && (t.sendbuf[0].seq - pkt.ack) < 0 {
 		p = t.sendbuf.Pop()
 
-		if t.rtt == 0 {
-			t.rtt = uint32(ti.Sub(p.t).Nanoseconds() / 1000000) + 1
-			t.rttvar = t.rtt / 2
-		}else{
-			delta := int32(ti.Sub(p.t).Nanoseconds() / 1000000) - int32(t.rtt)
-			t.rtt = uint32(int32(t.rtt) + delta >> 3)
-			t.rttvar = uint32(int32(t.rttvar) + (abs(delta) - int32(t.rttvar)) >> 2)
+		if !resend_flag {
+			if t.rtt == 0 {
+				t.rtt = uint32(ti.Sub(p.t).Nanoseconds() / 1000) + 1
+				t.rttvar = t.rtt / 2
+			}else{
+				delta := int32(ti.Sub(p.t).Nanoseconds() / 1000 - int64(t.rtt))
+				t.rtt = uint32(int32(t.rtt) + delta >> 3)
+				t.rttvar = uint32(int32(t.rttvar) + (abs(delta) - int32(t.rttvar)) >> 2)
+			}
 		}
 
 		t.stat.sendpkt += 1
@@ -201,18 +207,20 @@ func (t *Tunnel) proc_ack(pkt *Packet) {
 
 		put_packet(p)
 	}
-	t.rto = int32(t.rtt + t.rttvar << 2)
+	t.rto = int32((t.rtt + t.rttvar << 2 + 999)/1000)
+	// if t.rto < TM_TICK { t.rto = TM_TICK }
+	t.logger.Info("rtt info,", t.rtt, t.rttvar, t.rto)
 
 	switch {
-	case t.sack_count >= 2 || t.retrans_count != 0:
-		t.cwnd = t.ssthresh
-	case t.cwnd <= t.ssthresh: t.cwnd += SMSS
-	case t.cwnd < SMSS*SMSS: t.cwnd += SMSS*SMSS/t.cwnd
+	case resend_flag: t.cwnd = t.ssthresh
+	case t.cwnd <= t.ssthresh: t.cwnd += MSS
+	case t.cwnd < MSS*MSS: t.cwnd += MSS*MSS/t.cwnd
 	default: t.cwnd += 1
 	}
 	t.sack_count = 0
+	t.sack_sent = nil
 	t.retrans_count = 0
-	t.logger.Debug("congestion adjust, ack,", t.cwnd, t.ssthresh)
+	t.logger.Info("congestion adjust, ack,", t.cwnd, t.ssthresh)
 
 	if t.timer.rexmt != 0 {
 		if len(t.sendbuf) != 0 {
@@ -223,11 +231,11 @@ func (t *Tunnel) proc_ack(pkt *Packet) {
 	return 
 }
 
-func (t *Tunnel) proc_sack(pkt *Packet) (err error) {
+func (t *Tunnel) recv_sack(pkt *Packet) (err error) {
 	var i int
 	var id int32
 
-	t.logger.Debug("sack proc", t.sendbuf.String())
+	t.logger.Debug("sack proc", t.sendbuf)
 	t.stat.recverr += 1
 	buf := bytes.NewBuffer(pkt.content)
 
@@ -267,26 +275,32 @@ LOOP:
 		if i < len(t.sendbuf) { sendbuf = append(sendbuf, t.sendbuf[i:]...) }
 		t.sendbuf = sendbuf
 	}
-	t.logger.Debug("sack proc end", t.sendbuf.String())
+	t.logger.Debug("sack proc end", t.sendbuf)
 
-	// FIXME: sack会一遍遍的重传已经发过的包
 	t.sack_count += 1
 	switch {
 	case t.sack_count < RETRANS_SACKCOUNT: return
 	case t.sack_count == RETRANS_SACKCOUNT:
 		inairlen := int32(0)
 		if len(t.sendbuf) > 0 { inairlen = t.sendseq - t.sendbuf[0].seq }
-		t.ssthresh = max32(int32(float32(inairlen)*BACKRATE), 2*SMSS)
-		t.cwnd = t.ssthresh + 3*SMSS
-		t.logger.Debug("congestion adjust, first sack,", t.cwnd, t.ssthresh)
+		t.ssthresh = max32(int32(float32(inairlen)*BACKRATE), 2*MSS)
+		t.cwnd = t.ssthresh + 3*MSS
+		t.logger.Info("congestion adjust, first sack,", t.cwnd, t.ssthresh)
 	case t.sack_count > RETRANS_SACKCOUNT:
-		t.cwnd += SMSS
-		t.logger.Debug("congestion adjust, sack,", t.cwnd, t.ssthresh)
+		t.cwnd += MSS
+		t.logger.Info("congestion adjust, sack,", t.cwnd, t.ssthresh)
 	}
 
+	var ok bool
+	if t.sack_sent == nil { t.sack_sent = make(map[int32]uint8) }
 	for _, p := range t.sendbuf {
 		if (p.seq - id) >= 0 { break }
+		if t.sack_sent != nil {
+			_, ok = t.sack_sent[p.seq]
+			if ok { continue }
+		}
 		t.send_packet(p)
+		t.sack_sent[p.seq] = 1
 	}
 	t.timer.rexmt = t.rto * (1 << t.retrans_count)
 	return

@@ -3,7 +3,9 @@ package tunnel
 import (
 	"errors"
 	"fmt"
+	"os"
 	"net"
+	"runtime/pprof"
 	"../sutils"
 )
 
@@ -70,11 +72,17 @@ func (srv *Server) get_tunnel(remote *net.UDPAddr, pkt *Packet) (t *Tunnel, err 
 		logsrv.Info("close tunnel", remotekey)
 		delete(srv.dispatcher, remotekey)
 		logsrv.Debug(srv.dispatcher)
+		pprof.StopCPUProfile()
 	}
 
 	srv.dispatcher[remotekey] = t
 	go srv.handler(NewTunnelConn(t))
 	logsrv.Info("create tunnel", remotekey)
+
+        fo, err := os.Create("/tmp/cli.prof")
+        if err != nil { panic(err) }
+        pprof.StartCPUProfile(fo)
+
 	return
 }	
 
@@ -128,7 +136,7 @@ func UdpServer (addr string, handler func (net.Conn) (error)) (err error) {
 		statsrv.recvsize += uint64(n)
 		t.c_recv <- pkt
 
-		logsrv.Debug("stat srv", statsrv.String())
+		logsrv.Debug("stat srv", statsrv)
 	}
 	return
 }

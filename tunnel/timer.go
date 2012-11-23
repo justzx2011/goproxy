@@ -29,11 +29,7 @@ type TcpTimer struct {
 
 func NewTimer () (tt *TcpTimer) {
 	tt = new(TcpTimer)
-	if OPT_DELAYACK {
-		tt.ticker = time.Tick(TM_TICK * time.Millisecond)
-	}else{
-		tt.ticker = time.Tick(SLOWTICK * TM_TICK * time.Millisecond)
-	}		
+	tt.ticker = time.Tick(TM_TICK * time.Millisecond)
 	tt.conn = TM_CONNEST
 	tt.keep = TM_KEEPALIVE
 	return
@@ -45,16 +41,13 @@ func (tt *TcpTimer) set_close () {
 }
 
 func (tt *TcpTimer) on_timer (t *Tunnel) (err error) {
-	if OPT_DELAYACK {
-		tt.slow += 1
-		if tt.slow >= SLOWTICK {
-			tt.slow = 0
-			err = tt.on_slow(t)
-			if err != nil { panic(err) }
-		}
-		return tt.on_fast(t)
-	}else{ return tt.on_slow(t) }
-	return
+	tt.slow += 1
+	if tt.slow >= SLOWTICK {
+		tt.slow = 0
+		err = tt.on_slow(t)
+		if err != nil { panic(err) }
+	}
+	return tt.on_fast(t)
 }
 
 func tick_timer(t int32) (int32, bool) {
@@ -71,6 +64,16 @@ func (tt *TcpTimer) on_fast (t *Tunnel) (err error) {
 		t.logger.Debug("timer delayack")
 		t.send(ACK, nil)
 	}
+
+	rexmtbak := tt.rexmt
+	tt.rexmt, trigger = tick_timer(tt.rexmt)
+	if trigger {
+		t.logger.Info("timer retrans", rexmtbak)
+		if tt.rexmt != 0 { panic("persist timer not 0 when rexmt timer on") }
+		err = t.on_retrans()
+		// if err != nil { return }
+		if err != nil { panic(err) }
+	}
 	return
 }
 
@@ -81,15 +84,6 @@ func (tt *TcpTimer) on_slow (t *Tunnel) (err error) {
 	if trigger {
 		t.logger.Debug("timer connest")
 		t.drop()
-	}
-
-	tt.rexmt, trigger = tick_timer(tt.rexmt)
-	if trigger {
-		t.logger.Debug("timer retrans")
-		if tt.rexmt != 0 { panic("persist timer not 0 when rexmt timer on") }
-		err = t.on_retrans()
-		// if err != nil { return }
-		if err != nil { panic(err) }
 	}
 
 	tt.persist, trigger = tick_timer(tt.persist)
@@ -117,24 +111,5 @@ func (tt *TcpTimer) on_slow (t *Tunnel) (err error) {
 		t.c_event <- EV_END
 	}
 
-	return
-}
-
-func (t *Tunnel) on_retrans () (err error) {
-	t.retrans_count += 1
-	if t.retrans_count > MAXRESEND {
-		t.drop()
-		t.logger.Warning("send packet more then maxretrans times")
-		return
-	}
-
-	for _, p := range t.sendbuf { t.send_packet(p) }
-
-	inairlen := int32(0)
-	if len(t.sendbuf) > 0 { inairlen = t.sendseq - t.sendbuf[0].seq }
-	t.ssthresh = max32(int32(float32(inairlen)*BACKRATE), 2*SMSS)
-	t.logger.Debug("congestion adjust, resend,", t.cwnd, t.ssthresh)
-
-	t.timer.rexmt = t.rto * (1 << t.retrans_count)
 	return
 }

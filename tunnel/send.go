@@ -8,12 +8,11 @@ import (
 )
 
 func (t *Tunnel) send_sack () (err error) {
-	// t.logger.Warning("sack send", t.recvbuf.String())
-	t.logger.Debug("sack send", t.recvbuf.String())
+	t.logger.Debug("sack send", t.recvbuf)
 	pkt := get_packet()
 	buf := bytes.NewBuffer(pkt.buf[HEADERSIZE:HEADERSIZE])
 	for i, p := range t.recvbuf {
-		if i >= SMSS/4 - 1 { break }
+		if i >= MSS/4 - 1 { break }
 		binary.Write(buf, binary.BigEndian, p.seq)
 	}
 	pkt.content = buf.Bytes()
@@ -61,5 +60,25 @@ func (t *Tunnel) send_packet(pkt *Packet) {
 	}else{
 		t.c_send <- &SendBlock{t.remote, pkt}
 	}
+	return
+}
+
+// FIXME: 高速网络中，rtt的速度太快，导致retrans调用来不及跟踪
+func (t *Tunnel) on_retrans () (err error) {
+	t.retrans_count += 1
+	if t.retrans_count > MAXRESEND {
+		t.drop()
+		t.logger.Warning("send packet more then maxretrans times")
+		return
+	}
+
+	for _, p := range t.sendbuf { t.send_packet(p) }
+
+	inairlen := int32(0)
+	if len(t.sendbuf) > 0 { inairlen = t.sendseq - t.sendbuf[0].seq }
+	t.ssthresh = max32(int32(float32(inairlen)*BACKRATE), 2*MSS)
+	t.logger.Info("congestion adjust, resend,", t.cwnd, t.ssthresh)
+
+	t.timer.rexmt = t.rto * (1 << t.retrans_count)
 	return
 }

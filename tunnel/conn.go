@@ -62,9 +62,9 @@ func (tc TunnelConn) Write(b []byte) (n int, err error) {
 	}()
 	
 	n = 0
-	for i := 0; i < len(b); i += SMSS {
-		if len(b) - i >= SMSS {
-			size = SMSS
+	for i := 0; i < len(b); i += MSS {
+		if len(b) - i >= MSS {
+			size = MSS
 		}else{ size = len(b) - i }
 
 		size, pkt = half_packet(b[i:i+size])
