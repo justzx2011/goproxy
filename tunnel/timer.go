@@ -16,7 +16,6 @@ const (
 
 const (
 	NETTICK = 1000 * 100 // nanosecond
-	NETTICK_S = 1000 * 1000 * 1000 / NETTICK
 	NETTICK_M = 1000 * 1000 / NETTICK
 )
 

@@ -76,7 +76,7 @@ func (t *Tunnel) on_retrans () {
 
 	inairlen := int32(0)
 	if len(t.sendbuf) > 0 { inairlen = t.sendseq - t.sendbuf.Front().seq }
-	t.ssthresh = max32(int32(float32(inairlen)*BACKRATE), 2*MSS)
+	t.ssthresh = max32(inairlen/2, 2*MSS)
 	t.logger.Info("congestion adjust, resend,", t.cwnd, t.ssthresh)
 
 	t.timer.rexmt = t.rto * (1 << t.retrans_count)

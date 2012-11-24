@@ -4,7 +4,7 @@
 @date: 2012-11-14
 @author: shell.xu
 '''
-import sys, gevent, logging
+import sys, md5, gevent, logging
 from getopt import getopt
 from urlparse import urlparse
 from gevent import socket, pool
@@ -12,7 +12,7 @@ import http, socks
 
 c = socks.socks5(('localhost', 1081))(socket.socket)
 # c = socket.socket
-def download(uri, tmp=False):
+def download(uri, downfull=False):
     url = urlparse(uri)
 
     r = (url.netloc or url.path).split(':', 1)
@@ -24,34 +24,42 @@ def download(uri, tmp=False):
     req = http.request_http(uri)
     req.set_header("Host", url.hostname)
     res = http.http_client(req, (hostname, port), c)
-    if not tmp: return res.read_body()
+
+    if downfull: return res.read_body()
+
+    m = md5.new()
     cnt = 0
     for d in res.read_chunk(res.stream):
         cnt += len(d)
-        sys.stdout.write('%d\t\r' % cnt)
+        m.update(d)
+    sys.stdout.write('done\n')
+    return m.hexdigest()
 
-def doloop(url, d, loops):
+def doloop(url, loops):
+    d = download(url, False)
     counter = [0, 0, 0, 0]
-    def writest(ch):
+
+    def writest():
         sys.stdout.write(
-            '%d/%d/%d/%d = %f/%f/%f%s' % (
-                counter[0], counter[1], counter[2], counter[3],
-                float(counter[0])/float(counter[3]), float(counter[1])/float(counter[3]),
-                float(counter[2])/float(counter[3]), ch))
+            '%d/%d/%d/%d = %f/%f/%f\n' % (
+                counter[0], counter[1], counter[2], loops,
+                float(counter[0])/loops, float(counter[1])/loops,
+                float(counter[2])/loops))
         
     def tester():
-        counter[3] += 1
         try:
-            e = download(url)
+            e = download(url, False)
             if d == e: counter[0] += 1
-            else: counter[1] += 1
+            else:
+                sys.stdout.write("%s != %s" % (d, e))
+                counter[1] += 1
         except Exception, e: counter[2] += 1
-        writest('\r')
+        writest()
 
     p = pool.Pool(200)
     for i in xrange(loops): p.spawn(tester)
-    p.join()
-    writest('\n')
+    try: p.join()
+    finally: writest()
 
 def initlog(lv, logfile=None):
     rootlog = logging.getLogger()
@@ -71,9 +79,9 @@ def main():
     if not args: url = 'http://localhost/'
     else: url = args[0]
     if '-o' in optdict:
-        with open(optdict['-o'], 'w') as fo:
-            fo.write(download(url))
-    elif '-t' in optdict: print download(url, True)
-    elif '-b': doloop(url, download(url), int(optdict['-b']))
+        with open(optdict['-o'], 'wb') as fo:
+            fo.write(download(url, True))
+    elif '-t' in optdict: print download(url, False)
+    elif '-b': doloop(url, int(optdict['-b']))
 
 if __name__ == '__main__': main()

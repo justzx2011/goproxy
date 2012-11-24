@@ -6,6 +6,7 @@ import (
 	"os"
 	"net"
 	"runtime/pprof"
+	"sync"
 	"../sutils"
 )
 
@@ -18,6 +19,7 @@ func init () {
 
 type Server struct {
 	conn *net.UDPConn
+	lock sync.Locker
 	dispatcher map[string]*Tunnel
 	handler func (net.Conn) (error)
 	c_send chan *SendBlock
@@ -26,6 +28,7 @@ type Server struct {
 func NewServer(conn *net.UDPConn) (srv *Server) {
 	srv = new(Server)
 	srv.conn = conn
+	srv.lock = new(sync.Mutex)
 	srv.dispatcher = make(map[string]*Tunnel)
 	srv.c_send = make(chan *SendBlock, 1)
 	go srv.sender()
@@ -59,6 +62,9 @@ func (srv *Server) sender () {
 func (srv *Server) get_tunnel(remote *net.UDPAddr, pkt *Packet) (t *Tunnel, err error) {
 	var ok bool
 	remotekey := remote.String()
+	srv.lock.Lock()
+	defer srv.lock.Unlock()
+
 	t, ok = srv.dispatcher[remotekey]
 	if ok { return }
 
@@ -77,6 +83,8 @@ func (srv *Server) get_tunnel(remote *net.UDPAddr, pkt *Packet) (t *Tunnel, err 
 	t = NewTunnel(remote, fmt.Sprintf("%d_srv", remote.Port))
 	t.c_send = srv.c_send
 	t.onclose = func () {
+		srv.lock.Lock()
+		defer srv.lock.Unlock()
 		logsrv.Info("close tunnel", remotekey)
 		delete(srv.dispatcher, remotekey)
 		logsrv.Debug(srv.dispatcher)

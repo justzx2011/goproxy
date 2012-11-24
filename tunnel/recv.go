@@ -312,7 +312,7 @@ LOOP: // sendbuf...
 	case t.sack_count == RETRANS_SACKCOUNT:
 		inairlen := int32(0)
 		if len(t.sendbuf) > 0 { inairlen = t.sendseq - t.sendbuf.Front().seq }
-		t.ssthresh = max32(int32(float32(inairlen)*BACKRATE), 2*MSS)
+		t.ssthresh = max32(inairlen/2, 2*MSS)
 		t.cwnd = t.ssthresh + 3*MSS
 		t.logger.Info("congestion adjust, first sack,", t.cwnd, t.ssthresh)
 	case t.sack_count > RETRANS_SACKCOUNT:

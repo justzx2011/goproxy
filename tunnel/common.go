@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	DROPFLAG = true
-	DROPRATE = 95
+	DROPFLAG = false
+	DROPRATE = 90
 	MSS = 1024 // Sender Maximum Segment Size
 	WINDOWSIZE = 128 * 256 * 256 * 256 - 1
 	READBUFSIZE = 100

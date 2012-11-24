@@ -10,7 +10,7 @@ import (
 	"os"
 	"./socks"
 	"./sutils"
-	"./secconn"
+	"./cryptconn"
 	"./tunnel"
 )
 
@@ -202,7 +202,7 @@ func main() {
 	var err error
 
 	if len(keyfile) > 0 {
-		f, err = secconn.NewSecConn(cipher, keyfile)
+		f, err = cryptconn.NewCryptConn(cipher, keyfile)
 		if err != nil {
 			log.Fatal("crypto not work, cipher or keyfile wrong.")
 		}

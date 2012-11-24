@@ -1,4 +1,4 @@
-package secconn
+package cryptconn
 
 import (
 	"bufio"
@@ -23,7 +23,7 @@ func ReadKey(keyfile string, keysize int, ivsize int) (key []byte, iv []byte, er
 	return
 }
 
-func NewSecConn(method string, keyfile string) (f func (net.Conn) (net.Conn, error), err error) {
+func NewCryptConn(method string, keyfile string) (f func (net.Conn) (net.Conn, error), err error) {
 	var g func(net.Conn, []byte, []byte) (net.Conn, error)
 	var keylen int
 	var ivlen int
@@ -61,7 +61,7 @@ func NewAesConn(conn net.Conn, key []byte, iv []byte) (sc net.Conn, err error) {
 	if err != nil { return }
 	in := cipher.NewCFBDecrypter(block, iv)
 	out := cipher.NewCFBEncrypter(block, iv)
-	return SecConn{conn.(*net.TCPConn), in, out}, nil
+	return CryptConn{conn.(*net.TCPConn), in, out}, nil
 }
 
 func NewDesConn(conn net.Conn, key []byte, iv []byte) (sc net.Conn, err error) {
@@ -69,7 +69,7 @@ func NewDesConn(conn net.Conn, key []byte, iv []byte) (sc net.Conn, err error) {
 	if err != nil { return }
 	in := cipher.NewCFBDecrypter(block, iv)
 	out := cipher.NewCFBEncrypter(block, iv)
-	return SecConn{conn.(*net.TCPConn), in, out}, nil
+	return CryptConn{conn.(*net.TCPConn), in, out}, nil
 }
 
 func NewTripleDesConn(conn net.Conn, key []byte, iv []byte) (sc net.Conn, err error) {
@@ -77,7 +77,7 @@ func NewTripleDesConn(conn net.Conn, key []byte, iv []byte) (sc net.Conn, err er
 	if err != nil { return }
 	in := cipher.NewCFBDecrypter(block, iv)
 	out := cipher.NewCFBEncrypter(block, iv)
-	return SecConn{conn.(*net.TCPConn), in, out}, nil
+	return CryptConn{conn.(*net.TCPConn), in, out}, nil
 }
 
 func NewRC4Conn(conn net.Conn, key []byte, iv []byte) (sc net.Conn, err error) {
@@ -85,5 +85,5 @@ func NewRC4Conn(conn net.Conn, key []byte, iv []byte) (sc net.Conn, err error) {
 	if err != nil { return }
 	out, err := rc4.NewCipher(key)
 	if err != nil { return }
-	return SecConn{conn.(*net.TCPConn), in, out}, nil
+	return CryptConn{conn.(*net.TCPConn), in, out}, nil
 }
