@@ -67,7 +67,6 @@ func (srv *Server) get_tunnel(remote *net.UDPAddr, pkt *Packet) (t *Tunnel, err 
 		p := get_packet()
 		p.content = p.buf[HEADERSIZE:HEADERSIZE]
 		p.flag = RST
-		p.window = 0
 		p.seq = 0
 		p.ack = pkt.seq
 		p.crc = uint16(crc32.ChecksumIEEE(p.content) & 0xffff)
@@ -115,6 +114,7 @@ func UdpServer (addr string, handler func (net.Conn) (error)) (err error) {
 	for {
 		pkt = get_packet()
 		n, remote, err = conn.ReadFromUDP(pkt.buf[:])
+		logsrv.Debug("read something from server main")
 		if err != nil {
 			statsrv.recverr += 1
 			put_packet(pkt)

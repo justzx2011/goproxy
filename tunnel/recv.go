@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
+	"time"
 )
 
 func (t *Tunnel) on_packet (pkt *Packet) (err error) {
@@ -15,48 +16,55 @@ func (t *Tunnel) on_packet (pkt *Packet) (err error) {
 
 	// no reset packet next
 	if (pkt.flag & ACKMASK) == RST {
+		t.logger.Debug("recv RST")
 		t.c_event <- EV_END
 		put_packet(pkt)
 		return
 	}
 
-	diff := (pkt.seq - t.recvseq)
-	size := len(pkt.content)
-	// TODO: PAWS
-	// accelerate for recv normal data
-	if t.status == EST && pkt.flag == DAT && diff == 0 && size != 0 &&
-		(len(t.recvbuf) == 0 || t.recvbuf.Front().seq != pkt.seq + int32(size)) {
-		t.logger.Debug("fast data recv")
-		t.recv_data(pkt)
-
-		p = get_packet()
-		p.content = p.buf[HEADERSIZE:HEADERSIZE]
-		p.acktime = pkt.sndtime
-		t.send(ACK, p)
-
-		put_packet(pkt)
-		return
+	if t.status == TIMEWAIT {
+		switch pkt.flag & ACKMASK {
+		case SYN:
+			t.c_event <- EV_END
+			return
+		case FIN:
+			t.send(ACK, nil)
+			return
+		}
 	}
 
-	if diff < 0 {
+	diff := pkt.seq - t.recvseq
+	timediff := pkt.sndtime - t.recent
+	// TODO: accelerate for recv normal data
+
+	if (t.recent != 0 && timediff < 0) || diff < 0 {
 		// or same in timer, older in seq
+		if (t.recent != 0 && timediff < 0) {
+			t.logger.Debug("history packet by timer")
+		}else{ t.logger.Debug("history packet") }
 		if (pkt.flag & ACKMASK) == DAT { t.send(ACK, nil) }
 		put_packet(pkt)
 		// when diff < 0, return now
 		return
 	}
+	if diff <= 0 { t.recent = pkt.sndtime }
 
 	if (pkt.flag & ACK) != 0 {
+		t.logger.Debug("recv ack")
 		t.recv_ack(pkt)
 	} // do ack and sack first
 	if (pkt.flag & ACKMASK) == SACK {
+		t.logger.Debug("recv sack")
 		t.recv_sack(pkt)
 		put_packet(pkt)
+		// future sack mean some packet loss
+		if diff > 0 { t.send_sack() }
 		return
 	}
 
 	if diff > 0 {
-		if size == 0 && pkt.flag == ACK {
+		t.logger.Debug("future packet")
+		if len(pkt.content) == 0 && pkt.flag == ACK {
 			put_packet(pkt)
 		}else if !t.recvbuf.Push(pkt) {
 			put_packet(pkt)
@@ -67,14 +75,8 @@ func (t *Tunnel) on_packet (pkt *Packet) (err error) {
 
 	// 提取历史数据
 	sendack := false
-	var sndtime int64
-	var cnt int64
 	for p = pkt; ; p = t.recvbuf.Pop() {
 		if t.proc_current(p) { sendack = true }
-
-		sndtime += int64(p.sndtime)
-		cnt += 1
-		t.logger.Debug(sndtime, cnt, p.sndtime)
 		put_packet(p)
 
 		if len(t.recvbuf) == 0 || (t.recvbuf.Front().seq != t.recvseq) {
@@ -83,17 +85,11 @@ func (t *Tunnel) on_packet (pkt *Packet) (err error) {
 	}
 
 	if sendack {
+		t.logger.Debug("send ack back")
 		select {
 		case p = <- t.c_wrout:
 		default: p = nil
 		}
-
-		if p == nil {
-			p = get_packet()
-			p.content = p.buf[HEADERSIZE:HEADERSIZE]
-		}
-		p.acktime = int32(sndtime/cnt)
-		t.logger.Debug(p.acktime, cnt, p.sndtime)
 		t.send(ACK, p)
 	}
 
@@ -103,66 +99,67 @@ func (t *Tunnel) on_packet (pkt *Packet) (err error) {
 func (t *Tunnel) recv_data (pkt *Packet) {
 	t.readlck.Lock()
 	defer t.readlck.Unlock()
+	size := len(pkt.content)
 	_, err := t.readbuf.Write(pkt.content)
 	if err != nil { panic(err) }
 	select {
 	case t.c_read <- 1:
 	default:
 	}
-	size := len(pkt.content)
-	t.recent = pkt.sndtime
 	t.recvseq += int32(size)
 	t.stat.recvsize += uint64(size)
 }
 
 func (t *Tunnel) proc_current (pkt *Packet) (sendack bool) {
 	t.sendwnd = int32(pkt.window)
+	t.logger.Debug("process current,", pkt.seq)
 
 	flag := pkt.flag & ACKMASK
-	if flag == DAT && len(pkt.content) != 0 {
-		t.recv_data(pkt)
-		return true
+	if t.status == SYNRCVD && flag == DAT {
+		t.timer.conn = 0
+		t.status = EST
+		t.c_wrout = t.c_wrin
 	}
+
+	switch flag {
+	case DAT:
+		if len(pkt.content) != 0 {
+			t.recv_data(pkt)
+			return true
+		}
+		if pkt.flag == DAT { t.logger.Warning("DAT packet without data") }
+		// ack in this way
+	case PST:
+		t.recvseq += 1
+		t.send(ACK, nil)
+		return
+	default: t.recvseq += 1
+	}// ack with no data and all flags other then pst, rst and sack
 
 	switch t.status {
 	case EST:
 		if flag == FIN {
-			t.recvseq += 1
 			t.status = LASTACK
 			t.send(FIN | ACK, nil)
 			t.c_wrout = nil
 			return
 		}
-	case TIMEWAIT:
-		switch flag {
-		case SYN:
-			t.recvseq += 1
-			t.c_event <- EV_END
-			return
-		case FIN:
-			t.recvseq += 1
-			t.send(ACK, nil)
-			return
-		}
 	case FINWAIT1:
-		switch pkt.flag {
+		switch flag {
 		case FIN:
 			if (pkt.flag & ACK) != 0 && (pkt.ack == t.sendseq) {
-				t.recvseq += 1
 				t.status = TIMEWAIT
 				t.send(ACK, nil)
 				t.timer.set_close()
-				t.close_nowait()
+				close(t.c_close)
 				return
 			}else{
-				t.recvseq += 1
 				t.status = CLOSING
 				t.send(ACK, nil)
 				return
 			}
 		case ACK:
 			if pkt.ack == t.sendseq {
-				t.recvseq += 1
 				t.status = FINWAIT2
 				t.send(FIN, nil)
 				return
@@ -170,34 +167,24 @@ func (t *Tunnel) proc_current (pkt *Packet) (sendack bool) {
 		}
 	case FINWAIT2:
 		if flag == FIN {
-			t.recvseq += 1
 			t.status = TIMEWAIT
 			t.send(ACK, nil)
 			t.timer.set_close()
-			t.close_nowait()
+			close(t.c_close)
 			return
 		}
 	case CLOSING:
 		if pkt.flag == ACK && pkt.ack == t.sendseq {
-			t.recvseq += 1
 			t.status = TIMEWAIT
 			t.timer.set_close()
-			t.close_nowait()
+			close(t.c_close)
 			return
 		}
 	case LASTACK:
 		if pkt.flag == ACK && pkt.ack == t.sendseq {
-			t.recvseq += 1
 			t.status = CLOSED
 			t.c_event <- EV_END
-			return
-		}
-	case SYNRCVD:
-		if (pkt.flag & ACKMASK) == DAT {
-			t.recvseq += 1
-			t.timer.conn = 0
-			t.status = EST
-			t.c_wrout = t.c_wrin
+			close(t.c_close)
 			return
 		}
 	case SYNSENT:
@@ -205,7 +192,6 @@ func (t *Tunnel) proc_current (pkt *Packet) (sendack bool) {
 			t.logger.Warning("SYNSENT got a no SYN ACK, ", DumpFlag(pkt.flag))
 			return
 		}
-		t.recvseq += 1
 		t.timer.conn = 0
 		t.status = EST
 		t.send(ACK, nil)
@@ -217,28 +203,20 @@ func (t *Tunnel) proc_current (pkt *Packet) (sendack bool) {
 			t.drop("CLOSED got a no SYN, " + DumpFlag(pkt.flag))
 			return
 		}
-		t.recvseq += 1
 		t.status = SYNRCVD
 		t.send(SYN | ACK, nil)
 		return
 	}
 
-	switch flag {
-	case DAT:
-		if pkt.flag == DAT {
-			t.logger.Warning("data packet with no data")
-		}
-	case SYN: t.logger.Warning("SYN flag not processed,", t)
-	case FIN: t.logger.Warning("FIN flag not processed,", t)
-	case PST: t.send(ACK, nil)
-	default: t.logger.Warning("what the hell flag is? ", pkt)
+	if flag != DAT {
+		t.logger.Warning("unknown flag or not processed,", pkt)
 	}
 	return
 }
 
 func (t *Tunnel) recv_ack(pkt *Packet) {
 	var p *Packet
-	ntick := get_nettick()
+	ntick := int32(time.Now().UnixNano()/NETTICK)
 
 	for len(t.sendbuf) != 0 && (t.sendbuf.Front().seq - pkt.ack) < 0 {
 		p = t.sendbuf.Pop()
@@ -250,19 +228,17 @@ func (t *Tunnel) recv_ack(pkt *Packet) {
 		put_packet(p)
 	}
 
-	if pkt.acktime != 0 {
-		if t.rtt == 0 {
-			t.rtt = uint32(ntick - pkt.acktime)
-			t.rttvar = t.rtt / 2
-		}else{
-			delta := ntick - pkt.acktime - int32(t.rtt)
-			t.rtt = uint32(int32(t.rtt) + delta >> 3)
-			t.rttvar = uint32(int32(t.rttvar) + (abs(delta) - int32(t.rttvar)) >> 2)
-		}
-		t.rto = int32((t.rtt + t.rttvar << 2)/NETTICK_M)
-		// if t.rto < TM_TICK { t.rto = TM_TICK }
-		t.logger.Info("rtt info,", t.rtt, t.rttvar, t.rto)
+	if t.rtt == 0 {
+		t.rtt = uint32(ntick - pkt.acktime)
+		t.rttvar = t.rtt / 2
+	}else{
+		delta := ntick - pkt.acktime - int32(t.rtt)
+		t.rtt = uint32(int32(t.rtt) + delta >> 3)
+		t.rttvar = uint32(int32(t.rttvar) + (abs(delta) - int32(t.rttvar)) >> 2)
 	}
+	t.rto = int32((t.rtt + t.rttvar << 2)/NETTICK_M)
+	// if t.rto < TM_TICK { t.rto = TM_TICK }
+	t.logger.Info("rtt info,", t.rtt, t.rttvar, t.rto)
 
 	resend_flag := t.sack_count >= 2 || t.retrans_count != 0
 	switch {
@@ -294,7 +270,7 @@ func (t *Tunnel) recv_sack(pkt *Packet) {
 	buf := bytes.NewBuffer(pkt.content)
 
 	err = binary.Read(buf, binary.BigEndian, &id)
-	t.logger.Debug("sack id", id)
+	// t.logger.Debug("sack id", id)
 	switch err {
 	case io.EOF: err = nil
 	case nil:
@@ -321,7 +297,7 @@ LOOP: // sendbuf...
 				case nil:
 				default: panic(err)
 				}
-				t.logger.Debug("sack id", id)
+				// t.logger.Debug("sack id", id)
 			}
 		}
 		if i < len(t.sendbuf) { sendbuf = append(sendbuf, t.sendbuf[i:]...) }
@@ -356,5 +332,6 @@ LOOP: // sendbuf...
 		t.sack_sent[p.seq] = 1
 	}
 	t.timer.rexmt = t.rto * (1 << t.retrans_count)
+	t.logger.Debug("reset rexmt due to sack", t.timer.rexmt)
 	return
 }

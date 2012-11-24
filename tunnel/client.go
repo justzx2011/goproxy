@@ -22,16 +22,29 @@ type Client struct {
 	t *Tunnel
 	conn *net.UDPConn
 	name string
+	c_close chan uint8
+}
+
+func (c *Client) isquit () (bool) {
+	select {
+	case <- c.c_close: return true
+	default:
+	}
+	return false
 }
 
 func (c *Client) sender () {
 	var err error
 	var n int
 	var db *SendBlock
-	defer func () { c.t.c_event <- EV_END }()
+	defer func () {
+		c.t.logger.Debug("client sender quit")
+		c.t.c_event <- EV_END
+	}()
 
-	for !c.t.isquit() {
+	for !c.isquit() {
 		db = <- c.t.c_send
+		if db == nil { break }
 
 		n, err = db.pkt.Pack()
 		if err != nil {
@@ -58,12 +71,17 @@ func (c *Client) recver () {
 	var err error
 	var n int
 	var pkt *Packet
-	defer func () { c.t.c_event <- EV_END }()
+	defer func () {
+		c.t.logger.Debug("client recver quit")
+		c.t.c_event <- EV_END
+	}()
 
-	for !c.t.isquit() {
+	for !c.isquit() {
 		pkt = get_packet()
 
 		n, err = c.conn.Read(pkt.buf[:])
+		// fixme: remove this
+		c.t.logger.Debug("something readed in client sender")
 		if err != nil {
 			statcli.recverr += 1
 			if !strings.HasSuffix(err.Error(), "use of closed network connection") {
@@ -101,16 +119,19 @@ func DialTunnel(addr string) (tc net.Conn, err error) {
 
 	name := fmt.Sprintf("%s_cli", strings.Split(localstr, ":")[1])
 	t = NewTunnel(udpaddr, name)
+	c := &Client{t, conn, name, make(chan uint8)}
+
 	t.c_send = make(chan *SendBlock, 1)
 	t.onclose = func () {
 		logcli.Info("close tunnel", localaddr)
 		conn.Close()
+		close(c.c_close)
+		close(t.c_send)
+
 		delete(connlog, localstr)
 		logcli.Debug(connlog)
 		pprof.StopCPUProfile()
 	}
-
-	c := &Client{t, conn, name}
 	go c.sender()
 	go c.recver()
 

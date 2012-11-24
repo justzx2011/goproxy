@@ -37,7 +37,6 @@ func (tc TunnelConn) Read(b []byte) (n int, err error) {
 	tc.t.readlck.Lock()
 	n, err = tc.t.readbuf.Read(b)
 	tc.t.readlck.Unlock()
-	// if err != nil { return }
 	if err != nil { panic(err) }
 
 	if l >= RESTARTACK && (l - n) < RESTARTACK {
@@ -78,10 +77,10 @@ func (tc TunnelConn) Write(b []byte) (n int, err error) {
 
 func (tc TunnelConn) Close() (err error) {
 	if tc.t.isquit() { return }
-	// tc.t.logger.Debug("closing")
+	tc.t.logger.Debug("closing")
 	if tc.t.status == EST { tc.t.c_event <- EV_CLOSE }
 	<- tc.t.c_close
-	// tc.t.logger.Debug("closed")
+	tc.t.logger.Debug("closed")
 	return
 }
 

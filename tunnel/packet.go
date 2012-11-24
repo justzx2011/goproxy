@@ -19,7 +19,6 @@ func init () {
 func get_packet () (p *Packet) {
 	select {
 	case p = <- c_pktfree:
-		p.acktime = 0
 	default: p = new(Packet)
 	}
 	return

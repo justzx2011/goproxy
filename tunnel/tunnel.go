@@ -62,6 +62,7 @@ func NewTunnel(remote *net.UDPAddr, name string) (t *Tunnel) {
 	t.sendbuf = make(PacketQueue, 0)
 	t.recvbuf = make(PacketQueue, 0)
 
+	t.rto = 15000
 	t.sendwnd = 10*MSS
 	t.cwnd = 10*MSS
 	t.ssthresh = WINDOWSIZE
@@ -83,8 +84,8 @@ func (t Tunnel) String () string {
 
 func (t *Tunnel) Dump() string {
 	return fmt.Sprintf(
-		"st: %s, sseq: %d, rseq: %d, sbuf: %d, rbuf: %d, read: %d, write: %d, blk: %t",
-		DumpStatus(t.status), t.sendseq, t.recvseq,
+		"st: %s, sseq: %d, rseq: %d, rcnt: %d, sbuf: %d, rbuf: %d, read: %d, write: %d, blk: %t",
+		DumpStatus(t.status), t.sendseq, t.recvseq, t.recent,
 		len(t.sendbuf), len(t.recvbuf), t.readbuf.Len(),
 		len(t.c_wrin), t.c_wrout == nil)
 }
@@ -175,21 +176,12 @@ func (t *Tunnel) on_quit () {
 	t.logger.Info(t.stat.String())
 
 	t.status = CLOSED
-	t.close_nowait()
-	
 	close(t.c_read)
 	close(t.c_wrin)
 	if t.onclose != nil { t.onclose() }
 
 	for _, p := range t.sendbuf { put_packet(p) }
 	for _, p := range t.recvbuf { put_packet(p) }
-}
-
-func (t *Tunnel) close_nowait () {
-	select {
-	case <- t.c_close:
-	default: close(t.c_close)
-	}
 }
 
 func (t *Tunnel) isquit () (bool) {

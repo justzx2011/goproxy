@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"math/rand"
+	"time"
 )
 
 func (t *Tunnel) send_sack () (err error) {
@@ -49,7 +50,8 @@ func (t *Tunnel) send (flag uint8, pkt *Packet) {
 
 func (t *Tunnel) send_packet(pkt *Packet) {
 	t.stat.senderr += 1
-	pkt.sndtime = get_nettick()
+	pkt.sndtime = int32(time.Now().UnixNano()/NETTICK)
+	pkt.acktime = t.recent
 	t.logger.Debug("send", pkt)
 
 	if DROPFLAG && rand.Intn(100) >= DROPRATE {
@@ -67,6 +69,7 @@ func (t *Tunnel) on_retrans () {
 		return
 	}
 
+	// todo: put them into a pipe
 	for _, p := range t.sendbuf { t.send_packet(p) }
 	t.sack_count = 0
 	t.sack_sent = nil

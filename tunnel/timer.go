@@ -40,12 +40,6 @@ func NewTimer () (tt *TcpTimer) {
 	return
 }
 
-func get_nettick () (int32) {
-	ti := time.Now()
-	t := ti.Second()*NETTICK_S + ti.Nanosecond()/NETTICK
-	return int32(t+(-128*256*256*256))
-}
-
 func (tt *TcpTimer) set_close () {
 	tt.finwait = 0
 	tt.timewait = 2*TM_MSL
