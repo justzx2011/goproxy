@@ -24,6 +24,8 @@ _testmain.go
 goproxy
 logger
 test
+cilgo
+echogo
 *.key
 *.log
 *.pyc
