@@ -3,9 +3,7 @@ package tunnel
 import (
 	"fmt"
 	"net"
-	"os"
 	"strings"
-	"runtime/pprof"
 	"../sutils"
 )
 
@@ -35,7 +33,7 @@ func (c *Client) isquit () (bool) {
 
 func (c *Client) sender () {
 	var err error
-	var n int
+	var n, ns int
 	var db *SendBlock
 	defer func () {
 		c.t.logger.Debug("client sender quit")
@@ -53,7 +51,7 @@ func (c *Client) sender () {
 			continue
 		}
 
-		_, err = c.conn.Write(db.pkt.buf[:n])
+		ns, err = c.conn.Write(db.pkt.buf[:n])
 		if err != nil {
 			statcli.senderr += 1
 			if strings.HasSuffix(err.Error(), "use of closed network connection") {
@@ -61,6 +59,9 @@ func (c *Client) sender () {
 			}
 			logcli.Err("Write Net", err)
 			continue
+		}
+		if ns != n {
+			logcli.Err("Write don't send all buffer")
 		}
 		statcli.sendpkt += 1
 		statcli.sendsize += uint64(n)
@@ -130,7 +131,6 @@ func DialTunnel(addr string) (tc net.Conn, err error) {
 
 		delete(connlog, localstr)
 		logcli.Debug(connlog)
-		pprof.StopCPUProfile()
 	}
 	go c.sender()
 	go c.recver()
@@ -140,9 +140,5 @@ func DialTunnel(addr string) (tc net.Conn, err error) {
 	logcli.Info("create tunnel", localaddr)
 	connlog[localstr] = t
 
-        fo, err := os.Create("/tmp/srv.prof")
-        if err != nil { panic(err) }
-        pprof.StartCPUProfile(fo)
-
-	return NewTunnelConn(t), nil
+	return &TunnelConn{t, localaddr}, nil
 }

@@ -22,7 +22,8 @@ func (t *Tunnel) on_packet (pkt *Packet) (err error) {
 		return
 	}
 
-	if t.status == TIMEWAIT {
+	switch t.status {
+	case TIMEWAIT:
 		switch pkt.flag & ACKMASK {
 		case SYN:
 			t.c_event <- EV_END
@@ -76,7 +77,9 @@ func (t *Tunnel) on_packet (pkt *Packet) (err error) {
 	// 提取历史数据
 	sendack := false
 	for p = pkt; ; p = t.recvbuf.Pop() {
-		if t.proc_current(p) { sendack = true }
+		sa, bk := t.proc_current(p)
+		if bk { return }
+		if sa { sendack = true }
 		put_packet(p)
 
 		if len(t.recvbuf) == 0 || (t.recvbuf.Front().seq != t.recvseq) {
@@ -110,7 +113,7 @@ func (t *Tunnel) recv_data (pkt *Packet) {
 	t.stat.recvsize += uint64(size)
 }
 
-func (t *Tunnel) proc_current (pkt *Packet) (sendack bool) {
+func (t *Tunnel) proc_current (pkt *Packet) (sendack bool, bk bool) {
 	t.sendwnd = int32(pkt.window)
 	t.logger.Debug("process current,", pkt.seq)
 
@@ -125,7 +128,7 @@ func (t *Tunnel) proc_current (pkt *Packet) (sendack bool) {
 	case DAT:
 		if len(pkt.content) != 0 {
 			t.recv_data(pkt)
-			return true
+			return true, false
 		}
 		if pkt.flag == DAT { t.logger.Warning("DAT packet without data") }
 		// ack in this way
@@ -139,9 +142,9 @@ func (t *Tunnel) proc_current (pkt *Packet) (sendack bool) {
 	switch t.status {
 	case EST:
 		if flag == FIN {
+			t.c_wrout = nil
 			t.status = LASTACK
 			t.send(FIN | ACK, nil)
-			t.c_wrout = nil
 			return
 		}
 	case FINWAIT1:
@@ -152,16 +155,14 @@ func (t *Tunnel) proc_current (pkt *Packet) (sendack bool) {
 				t.send(ACK, nil)
 				t.timer.set_close()
 				close(t.c_close)
-				return
 			}else{
 				t.status = CLOSING
 				t.send(ACK, nil)
-				return
 			}
+			return
 		case ACK:
 			if pkt.ack == t.sendseq {
 				t.status = FINWAIT2
-				t.send(FIN, nil)
 				return
 			}
 		}
@@ -187,6 +188,21 @@ func (t *Tunnel) proc_current (pkt *Packet) (sendack bool) {
 			close(t.c_close)
 			return
 		}
+	case CLOSED:
+		if pkt.flag != SYN {
+			t.drop("CLOSED got a no SYN, " + DumpFlag(pkt.flag))
+			return
+		}
+		t.status = SYNRCVD
+		t.send(SYN | ACK, nil)
+		return
+	case SYNRCVD:
+		if flag == FIN {
+			t.c_wrout = nil
+			t.status = LASTACK
+			t.send(FIN | ACK, nil)
+			return
+		}
 	case SYNSENT:
 		if pkt.flag != SYN | ACK {
 			t.logger.Warning("SYNSENT got a no SYN ACK, ", DumpFlag(pkt.flag))
@@ -198,18 +214,11 @@ func (t *Tunnel) proc_current (pkt *Packet) (sendack bool) {
 		t.c_wrout = t.c_wrin
 		t.c_connect <- EV_CONNECTED
 		return
-	case CLOSED:
-		if pkt.flag != SYN {
-			t.drop("CLOSED got a no SYN, " + DumpFlag(pkt.flag))
-			return
-		}
-		t.status = SYNRCVD
-		t.send(SYN | ACK, nil)
-		return
 	}
 
 	if flag != DAT {
-		t.logger.Warning("unknown flag or not processed,", pkt)
+		t.drop("unknown flag or not processed, " + pkt.String() + DumpStatus(t.status))
+		return false, true
 	}
 	return
 }
@@ -237,7 +246,6 @@ func (t *Tunnel) recv_ack(pkt *Packet) {
 		t.rttvar = uint32(int32(t.rttvar) + (abs(delta) - int32(t.rttvar)) >> 2)
 	}
 	t.rto = int32((t.rtt + t.rttvar << 2)/NETTICK_M)
-	// if t.rto < TM_TICK { t.rto = TM_TICK }
 	t.logger.Info("rtt info,", t.rtt, t.rttvar, t.rto)
 
 	resend_flag := t.sack_count >= 2 || t.retrans_count != 0

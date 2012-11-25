@@ -29,6 +29,9 @@ func (t *Tunnel) send (flag uint8, pkt *Packet) {
 	}
 	pkt.read_status(t, flag)
 	size := len(pkt.content)
+	if size != 0 && (flag & ACKMASK) != DAT && (flag & ACKMASK) != SACK{
+		panic(pkt)
+	}
 
 	t.send_packet(pkt)
 

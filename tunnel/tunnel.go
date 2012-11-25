@@ -160,10 +160,10 @@ func (t *Tunnel) on_event (ev uint8) (err error) {
 		t.send(SYN, nil)
 	case EV_CLOSE:
 		if t.status != EST { return }
-		t.timer.finwait = TM_FINWAIT
-		t.status = FINWAIT1
 		t.c_wrout = nil
+		t.status = FINWAIT1
 		t.send(FIN, nil)
+		t.timer.finwait = TM_FINWAIT
 	case EV_READ: t.send(ACK, nil)
 	default: return fmt.Errorf("unknown event %d", ev)
 	}

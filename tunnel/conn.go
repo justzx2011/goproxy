@@ -8,12 +8,7 @@ import (
 
 type TunnelConn struct {
 	t *Tunnel
-}
-
-func NewTunnelConn(t *Tunnel) (tc *TunnelConn) {
-	tc = new(TunnelConn)
-	tc.t = t
-	return
+	local net.Addr
 }
 
 func (tc TunnelConn) Read(b []byte) (n int, err error) {
@@ -85,9 +80,7 @@ func (tc TunnelConn) Close() (err error) {
 }
 
 func (tc TunnelConn) LocalAddr() net.Addr {
-	// return tc.t.conn.LocalAddr()
-	// 哈哈
-	return tc.t.remote
+	return tc.local
 }
 
 func (tc TunnelConn) RemoteAddr() net.Addr {

@@ -2,10 +2,7 @@ package tunnel
 
 import (
 	"fmt"
-	"hash/crc32"
-	"os"
 	"net"
-	"runtime/pprof"
 	"sync"
 	"../sutils"
 )
@@ -37,8 +34,9 @@ func NewServer(conn *net.UDPConn) (srv *Server) {
 
 func (srv *Server) sender () {
 	var err error
-	var n int
+	var n, ns int
 	var db *SendBlock
+
 	for {
 		db = <- srv.c_send
 
@@ -49,17 +47,20 @@ func (srv *Server) sender () {
 			continue
 		}
 
-		_, err = srv.conn.WriteToUDP(db.pkt.buf[:n], db.remote)
+		ns, err = srv.conn.WriteToUDP(db.pkt.buf[:n], db.remote)
 		if err != nil {
 			logsrv.Err("WriteToUDP", err)
 			statsrv.senderr += 1
+		}
+		if ns != n {
+			logsrv.Err("Write don't send all buffer")
 		}
 		statsrv.sendpkt += 1
 		statsrv.sendsize += uint64(n)
 	}
 }
 
-func (srv *Server) get_tunnel(remote *net.UDPAddr, pkt *Packet) (t *Tunnel, err error) {
+func (srv *Server) get_tunnel(remote *net.UDPAddr, pkt *Packet, local net.Addr) (t *Tunnel, err error) {
 	var ok bool
 	remotekey := remote.String()
 	srv.lock.Lock()
@@ -69,13 +70,12 @@ func (srv *Server) get_tunnel(remote *net.UDPAddr, pkt *Packet) (t *Tunnel, err 
 	if ok { return }
 
 	if pkt.flag != SYN {
-		logsrv.Warning("packet to unknow tunnel,", remotekey)
+		logsrv.Info("packet to unknow tunnel,", remotekey)
 		p := get_packet()
 		p.content = p.buf[HEADERSIZE:HEADERSIZE]
 		p.flag = RST
 		p.seq = 0
 		p.ack = pkt.seq
-		p.crc = uint16(crc32.ChecksumIEEE(p.content) & 0xffff)
 		srv.c_send <- &SendBlock{remote, p}
 		return nil, nil
 	}
@@ -88,16 +88,11 @@ func (srv *Server) get_tunnel(remote *net.UDPAddr, pkt *Packet) (t *Tunnel, err 
 		logsrv.Info("close tunnel", remotekey)
 		delete(srv.dispatcher, remotekey)
 		logsrv.Debug(srv.dispatcher)
-		pprof.StopCPUProfile()
 	}
 
 	srv.dispatcher[remotekey] = t
-	go srv.handler(NewTunnelConn(t))
+	go srv.handler(&TunnelConn{t, local})
 	logsrv.Info("create tunnel", remotekey)
-
-        fo, err := os.Create("/tmp/cli.prof")
-        if err != nil { panic(err) }
-        pprof.StartCPUProfile(fo)
 
 	return
 }	
@@ -137,7 +132,7 @@ func UdpServer (addr string, handler func (net.Conn) (error)) (err error) {
 			continue
 		}
 
-		t, err = srv.get_tunnel(remote, pkt)
+		t, err = srv.get_tunnel(remote, pkt, udpaddr)
 		if err != nil {
 			statsrv.recverr += 1
 			logsrv.Err("get tunnel", err)
@@ -145,7 +140,6 @@ func UdpServer (addr string, handler func (net.Conn) (error)) (err error) {
 		}
 		if t == nil {
 			statsrv.recverr += 1
-			logsrv.Err("unknow problem leadto channel 0")
 			continue
 		}
 

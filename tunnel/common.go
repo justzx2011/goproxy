@@ -10,12 +10,11 @@ const (
 	DROPFLAG = false
 	DROPRATE = 90
 	MSS = 1024 // Sender Maximum Segment Size
-	WINDOWSIZE = 128 * 256 * 256 * 256 - 1
+	WINDOWSIZE = 64 * 256 * 256 * 256
 	READBUFSIZE = 100
 	RESTARTACK = 3*16*1024
 	MAXRESEND = 13
 	RETRANS_SACKCOUNT = 2
-	BACKRATE = 0.8
 )
 
 const (

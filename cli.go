@@ -5,26 +5,35 @@ import (
 	"flag"
 	"io"
 	"log"
+	"math/rand"
 	"net"
 	"os"
-	"sync"
+	"time"
 	"./sutils"
 	"./tunnel"
 )
 
+const BLOCKSIZE = 1024
+
 var data []byte
+var serveraddr string
 
 func init () {
 	var logfile string
+	var loglevel string
 
 	flag.StringVar(&logfile, "logfile", "", "log file")
+	flag.StringVar(&loglevel, "loglevel", "WARNING", "log level")
 	flag.Parse()
 
-	sutils.SetupLog(logfile, sutils.LOG_DEBUG, 16)
+	lv, err := sutils.GetLevelByName(loglevel)
+	if err != nil { log.Fatal(err.Error()) }
+	err = sutils.SetupLog(logfile, lv, 16)
+	if err != nil { log.Fatal(err.Error()) }
 }
 
 func prepare_initdata () (err error) {
-	data = make([]byte, 16384)
+	data = make([]byte, BLOCKSIZE)
 
 	f, err := os.Open("/dev/urandom")
 	if err != nil { return }
@@ -32,42 +41,61 @@ func prepare_initdata () (err error) {
 
 	n, err := f.Read(data)
 	if err != nil { return }
-	if n < 16384 { return io.EOF }
+	if n < BLOCKSIZE { return io.EOF }
 
 	return
 }
 
-func pre_client (conn net.Conn, wg sync.WaitGroup) {
+var changroup map[chan uint8]*tunnel.TunnelConn
+
+func pre_client (c chan uint8) {
 	var n int
 	var err error
-	var buf [16384]byte
-	defer conn.Close()
+	var buf [BLOCKSIZE]byte
+	var conn net.Conn
 
-	for {
+	conn, err = tunnel.DialTunnel(serveraddr)
+	if err != nil {
+		sutils.Err(err)
+		return
+	}
+	changroup[c] = conn.(*tunnel.TunnelConn)
+	defer func () {
+		delete(changroup, c)
+		conn.Close()
+		sutils.Info("quit")
+		go pre_client(c)
+	}()
+	sutils.Info("start")
+	max := rand.Intn(100)
+
+	for i := 0; i < max; i++ {
 		_, err = conn.Write(data)
 		if err != nil {
-			sutils.Err(err)
+			sutils.Err("Write", err)
 			return
 		}
 
-		n, err = conn.Write(buf[:])
+		n, err = io.ReadFull(conn, buf[:])
+		if err == io.EOF { break }
 		if err != nil {
-			sutils.Err(err)
+			sutils.Err("Read", err)
 			return
 		}
 
 		if !bytes.Equal(buf[:n], data) {
 			sutils.Err("response not match")
 		}
-	}
 
-	wg.Done()
+		select {
+		case <- c:
+		default:
+		}
+	}
 }
 
 func main () {
 	var err error
-	var serveraddr string
-	var conn net.Conn
 
 	if len(flag.Args()) < 1 {
 		log.Fatal("args not enough")
@@ -76,17 +104,26 @@ func main () {
 
 	err = prepare_initdata()
 	if err != nil {
-		sutils.Err(err)
+		sutils.Err("init", err)
 		return
 	}
+	changroup = make(map[chan uint8]*tunnel.TunnelConn)
 
-	var wg sync.WaitGroup
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-		conn, err = tunnel.DialTunnel(serveraddr)
-		if err != nil { sutils.Err(err) }
-		go pre_client(conn, wg)
+	for i := 0; i < 300; i++ {
+		c := make(chan uint8, 2)
+		go pre_client(c)
 	}
 
-	wg.Wait()
+	for {
+		for c, tc := range changroup {
+			if len(c) > 1 {
+				sutils.Err("somebody die", tc)
+			}
+			select {
+			case c <- 1:
+			default:
+			}
+		}
+		time.Sleep(60 * time.Second)
+	}
 }

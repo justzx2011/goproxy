@@ -45,7 +45,7 @@ const (
 func DumpFlag(flag uint8) (r string) {
 	var rs string
 	if flag == ACK { return "ACK" }
-	switch flag & 0x3f {
+	switch flag & ACKMASK {
 	case DAT: rs = "DAT"
 	case SYN: rs = "SYN"
 	case FIN: rs = "FIN"
@@ -62,7 +62,6 @@ type Packet struct {
 	window uint32
 	seq int32
 	ack int32
-	crc uint16
 	sndtime int32
 	acktime int32
 	content []byte
@@ -87,7 +86,6 @@ func (p *Packet) read_status (t *Tunnel, flag uint8) {
 	}else{ p.window = 0 }
 	p.seq = t.sendseq
 	p.ack = t.recvseq
-	p.crc = uint16(crc32.ChecksumIEEE(p.content) & 0xffff)
 }
 
 func (p *Packet) String() string {
@@ -99,73 +97,66 @@ func (p *Packet) String() string {
 func (p *Packet) Pack() (n int, err error) {
 	buf := bytes.NewBuffer(p.buf[:0])
 	if len(p.content) > MSS {
-		fmt.Println(p)
 		return 0, fmt.Errorf("packet too large, %d/%d", len(p.content), MSS)
 	}
 
 	err = binary.Write(buf, binary.BigEndian, &p.flag)
-	// if err != nil { return }
 	if err != nil { panic(err) }
 	err = binary.Write(buf, binary.BigEndian, &p.window)
-	// if err != nil { return }
 	if err != nil { panic(err) }
 	err = binary.Write(buf, binary.BigEndian, &p.seq)
-	// if err != nil { return }
 	if err != nil { panic(err) }
 	err = binary.Write(buf, binary.BigEndian, &p.ack)
-	// if err != nil { return }
-	if err != nil { panic(err) }
-	err = binary.Write(buf, binary.BigEndian, &p.crc)
-	// if err != nil { return }
 	if err != nil { panic(err) }
 	err = binary.Write(buf, binary.BigEndian, &p.sndtime)
-	// if err != nil { return }
 	if err != nil { panic(err) }
 	err = binary.Write(buf, binary.BigEndian, &p.acktime)
-	// if err != nil { return }
 	if err != nil { panic(err) }
 	err = binary.Write(buf, binary.BigEndian, uint16(len(p.content)))
-	// if err != nil { return }
 	if err != nil { panic(err) }
+
+	crc := crc32.Update(0, crc32.IEEETable, p.buf[:HEADERSIZE-4])
+	if len(p.content) != 0 {
+		crc = crc32.Update(crc, crc32.IEEETable, p.content)
+	}
+	err = binary.Write(buf, binary.BigEndian, uint16(crc))
+	if err != nil { panic(err) }
+
 	return HEADERSIZE+len(p.content), err
 }
 
 func (p *Packet) Unpack(n int) (err error) {
 	var l uint16
-	buf := bytes.NewBuffer(p.buf[:n])
+	var crc1 uint16
+	buf := bytes.NewBuffer(p.buf[:HEADERSIZE])
 
 	err = binary.Read(buf, binary.BigEndian, &p.flag)
-	// if err != nil { return }
 	if err != nil { panic(err) }
 	err = binary.Read(buf, binary.BigEndian, &p.window)
-	// if err != nil { return }
 	if err != nil { panic(err) }
 	err = binary.Read(buf, binary.BigEndian, &p.seq)
-	// if err != nil { return }
 	if err != nil { panic(err) }
 	err = binary.Read(buf, binary.BigEndian, &p.ack)
-	// if err != nil { return }
-	if err != nil { panic(err) }
-	err = binary.Read(buf, binary.BigEndian, &p.crc)
-	// if err != nil { return }
 	if err != nil { panic(err) }
 	err = binary.Read(buf, binary.BigEndian, &p.sndtime)
-	// if err != nil { return }
 	if err != nil { panic(err) }
 	err = binary.Read(buf, binary.BigEndian, &p.acktime)
-	// if err != nil { return }
 	if err != nil { panic(err) }
 	err = binary.Read(buf, binary.BigEndian, &l)
-	// if err != nil { return }
+	if err != nil { panic(err) }
+	err = binary.Read(buf, binary.BigEndian, &crc1)
 	if err != nil { panic(err) }
 
-	if l > MSS { return fmt.Errorf("packet too large, %d/%d", l, MSS) }
-	if buf.Len() != int(l) { return errors.New("packet broken") }
-	p.content = buf.Bytes()
+	if n != HEADERSIZE + int(l) { return errors.New("packet broken") }
+	p.content = p.buf[HEADERSIZE:HEADERSIZE+l]
 
-	if p.crc != uint16(crc32.ChecksumIEEE(p.content) & 0xffff) {
-		return fmt.Errorf("crc32 fault %x/%x %s",
-			p.crc, crc32.ChecksumIEEE(p.content), p)
+	crc := crc32.Update(0, crc32.IEEETable, p.buf[:HEADERSIZE-4])
+	if len(p.content) != 0 {
+		crc = crc32.Update(crc, crc32.IEEETable, p.content)
+	}
+
+	if crc1 != uint16(crc) {
+		return fmt.Errorf("crc32 fault %x/%x %s", crc1, uint16(crc), p)
 	}
 	return
 }
