@@ -1,6 +1,7 @@
 package tunnel
 
 import (
+	"fmt"
 	"net"
 	"strings"
 	"strconv"
@@ -10,8 +11,9 @@ const (
 	DROPFLAG = false
 	DROPRATE = 90
 	MSS = 1024 // Sender Maximum Segment Size
-	WINDOWSIZE = 64 * 256 * 256 * 256
-	READBUFSIZE = 100
+	TBUFSIZE = 32 // length of queue in read/write per tunnel
+	READBUFSIZE = 1024
+	WINDOWSIZE = READBUFSIZE * MSS
 	RESTARTACK = 3*16*1024
 	MAXRESEND = 13
 	RETRANS_SACKCOUNT = 2
@@ -56,8 +58,8 @@ func DumpStatus(st uint8) string {
 
 type PacketQueue []*Packet
 
-func (pq *PacketQueue) Front() (pkt *Packet) {
-	return (*pq)[0]
+func (pq *PacketQueue) Len() (int) {
+	return len(*pq)
 }
 
 func (pq *PacketQueue) Push(pkt *Packet) (ok bool) {
@@ -83,6 +85,18 @@ func (pq *PacketQueue) Pop() (p *Packet) {
 	p = (*pq)[0]
 	*pq = (*pq)[1:]
 	return
+}
+
+func (pq *PacketQueue) Front() (pkt *Packet) {
+	return (*pq)[0]
+}
+
+func (pq *PacketQueue) Get (i int) (pkt *Packet) {
+	if i >= len(*pq) {
+		panic(fmt.Sprintf("index %d large then queue size %d",
+			i, len(*pq)))
+	}
+	return (*pq)[i]
 }
 
 func (pq *PacketQueue) String () (s string) {

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"os"
 	"testing"
-	"time"
 )
 
 func rand_data () (data []byte, err error) {
@@ -40,7 +39,7 @@ func copypkt (t *testing.T, pkt *Packet) (p *Packet) {
 }
 
 func PackOnce (t *testing.T, flag uint8) {
-	tick := int32(time.Now().UnixNano()/NETTICK)
+	tick := get_nettick()
 	data, err := rand_data()
 	if err != nil { t.Errorf("rand data init failed") }
 
@@ -67,7 +66,7 @@ func PackOnce (t *testing.T, flag uint8) {
 }
 
 func PackOnceFail (t *testing.T, flag uint8) {
-	tick := int32(time.Now().UnixNano()/NETTICK)
+	tick := get_nettick()
 	data, err := rand_data()
 	if err != nil { t.Errorf("rand data init failed") }
 

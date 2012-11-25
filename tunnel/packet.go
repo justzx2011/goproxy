@@ -84,8 +84,8 @@ func (p *Packet) read_status (t *Tunnel, flag uint8) {
 	if WINDOWSIZE > l {
 		p.window = uint32(WINDOWSIZE - l)
 	}else{ p.window = 0 }
-	p.seq = t.sendseq
-	p.ack = t.recvseq
+	p.seq = t.seq_send
+	p.ack = t.seq_recv
 }
 
 func (p *Packet) String() string {

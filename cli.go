@@ -71,6 +71,7 @@ func pre_client (c chan uint8) {
 
 	for i := 0; i < max; i++ {
 		_, err = conn.Write(data)
+		if err == io.EOF { break }
 		if err != nil {
 			sutils.Err("Write", err)
 			return
@@ -91,6 +92,7 @@ func pre_client (c chan uint8) {
 		case <- c:
 		default:
 		}
+		time.Sleep(1 * time.Second)
 	}
 }
 

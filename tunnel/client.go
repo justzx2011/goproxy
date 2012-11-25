@@ -119,10 +119,8 @@ func DialTunnel(addr string) (tc net.Conn, err error) {
 	localstr := localaddr.String()
 
 	name := fmt.Sprintf("%s_cli", strings.Split(localstr, ":")[1])
-	t = NewTunnel(udpaddr, name)
+	t = NewTunnel(udpaddr, name, make(chan *SendBlock, TBUFSIZE))
 	c := &Client{t, conn, name, make(chan uint8)}
-
-	t.c_send = make(chan *SendBlock, 1)
 	t.onclose = func () {
 		logcli.Info("close tunnel", localaddr)
 		conn.Close()

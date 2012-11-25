@@ -21,6 +21,9 @@ install:
 clean:
 	rm -f $(TARGET)
 
+test:
+	go test ./tunnel
+
 server: goproxy
 	rm -f /tmp/server.log /tmp/srv.log
 	./goproxy --mode udpsrv --listen :8899 $(DEBUGOPT) $(DEBUGSRV) > /tmp/srv.log

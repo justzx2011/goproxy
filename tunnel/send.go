@@ -4,14 +4,13 @@ import (
 	"bytes"
 	"encoding/binary"
 	"math/rand"
-	"time"
 )
 
 func (t *Tunnel) send_sack () (err error) {
-	t.logger.Debug("sack send", t.recvbuf)
+	t.logger.Debug("sack send", t.q_recv)
 	pkt := get_packet()
 	buf := bytes.NewBuffer(pkt.buf[HEADERSIZE:HEADERSIZE])
-	for i, p := range t.recvbuf {
+	for i, p := range t.q_recv {
 		if i >= MSS/4 - 1 { break }
 		binary.Write(buf, binary.BigEndian, p.seq)
 	}
@@ -40,20 +39,25 @@ func (t *Tunnel) send (flag uint8, pkt *Packet) {
 	case SACK: return
 	case DAT:
 		if size == 0 { return }
-		t.sendseq += int32(size)
-	default: t.sendseq += 1
+		t.seq_send += int32(size)
+	default: t.seq_send += 1
 	}
-	// TODO: 不加入sendbuf的pkt的回收
+	// TODO: 不加入q_send的pkt的回收
 	// 不能直接回收，会导致发送时有问题
 
-	if !t.sendbuf.Push(pkt) { panic(pkt) }
-	if t.timer.rexmt == 0 { t.timer.rexmt = t.rto }
+	if !t.q_send.Push(pkt) { panic(pkt) }
+	// FIXME: if rto < TM_TICK?
+	if t.timer.rexmt_work == 0 && t.rto != 0 {
+		t.logger.Debug("set rexmt,", t.rto)
+		t.timer.rexmt = get_nettick() + t.rto
+		t.timer.rexmt_work = 1
+	}
 	return
 }
 
 func (t *Tunnel) send_packet(pkt *Packet) {
 	t.stat.senderr += 1
-	pkt.sndtime = int32(time.Now().UnixNano()/NETTICK)
+	pkt.sndtime = get_nettick()
 	pkt.acktime = t.recent
 	t.logger.Debug("send", pkt)
 
@@ -66,22 +70,29 @@ func (t *Tunnel) send_packet(pkt *Packet) {
 }
 
 func (t *Tunnel) on_retrans () {
+	if t.q_send.Len() == 0 { return }
+
 	t.retrans_count += 1
 	if t.retrans_count > MAXRESEND {
 		t.drop("send packet more then maxretrans times")
 		return
 	}
-
-	// todo: put them into a pipe
-	for _, p := range t.sendbuf { t.send_packet(p) }
+	
+	t.c_rexmt_in <- t.q_send.Get(0)
+	t.rexmt_idx = 1
+	t.c_wrout = nil
+	t.c_rexmt_out = t.c_rexmt_in
+	
 	t.sack_count = 0
 	t.sack_sent = nil
 
 	inairlen := int32(0)
-	if len(t.sendbuf) > 0 { inairlen = t.sendseq - t.sendbuf.Front().seq }
+	if len(t.q_send) > 0 { inairlen = t.seq_send - t.q_send.Front().seq }
 	t.ssthresh = max32(inairlen/2, 2*MSS)
+	t.cwnd = MSS
 	t.logger.Info("congestion adjust, resend,", t.cwnd, t.ssthresh)
 
-	t.timer.rexmt = t.rto * (1 << t.retrans_count)
+	t.timer.rexmt = get_nettick() + t.rto * (1 << t.retrans_count)
+	t.timer.rexmt_work = 1
 	return
 }

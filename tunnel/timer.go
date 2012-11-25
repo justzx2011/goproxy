@@ -5,24 +5,28 @@ import (
 )
 
 const (
-	SLOWTICK = 5
-	TM_TICK = 100
+	TM_TICK = 500
 	TM_MSL = 30000
 	TM_CONNEST = 75000
 	TM_KEEPALIVE = 3600000
 	TM_FINWAIT = 10000
 	TM_PERSIST = 60000
+	TM_INITRTO = 150000 // 0.1 ms
 )
 
 const (
 	NETTICK = 1000 * 100 // nanosecond
-	NETTICK_M = 1000 * 1000 / NETTICK
 )
+
+func get_nettick () (int32) {
+	return int32(time.Now().UnixNano()/NETTICK)
+}
 
 type TcpTimer struct {
 	ticker <-chan time.Time
 	conn int32
 	rexmt int32
+	rexmt_work uint8
 	persist int32
 	keep int32
 	finwait int32
@@ -44,15 +48,6 @@ func (tt *TcpTimer) set_close () {
 	tt.timewait = 2*TM_MSL
 }
 
-func (tt *TcpTimer) on_timer (t *Tunnel) {
-	tt.slow += 1
-	if tt.slow >= SLOWTICK {
-		tt.slow = 0
-		tt.on_slow(t)
-	}
-	tt.on_fast(t)
-}
-
 func tick_timer(t int32) (int32, bool) {
 	if t == 0 { return 0, false }
 	next := t - TM_TICK
@@ -60,20 +55,17 @@ func tick_timer(t int32) (int32, bool) {
 	return next, false
 }
 
-func (tt *TcpTimer) on_fast (t *Tunnel) {
-	var trigger bool
-
-	rexmtbak := tt.rexmt
-	tt.rexmt, trigger = tick_timer(tt.rexmt)
-	if trigger {
-		t.logger.Info("timer retrans", rexmtbak)
-		if tt.rexmt != 0 { panic("persist timer not 0 when rexmt timer on") }
+func (tt *TcpTimer) chk_rexmt (t *Tunnel) {
+	ntick := get_nettick()
+	if tt.rexmt_work == 0 { return }
+	if (ntick - tt.rexmt) >= 0 {
+		t.logger.Debug("chk_rexmt work,", tt.rexmt_work, ntick, tt.rexmt)
 		t.on_retrans()
 	}
 	return
 }
 
-func (tt *TcpTimer) on_slow (t *Tunnel) {
+func (tt *TcpTimer) on_timer (t *Tunnel) {
 	var trigger bool
 
 	tt.conn, trigger = tick_timer(tt.conn)
@@ -104,5 +96,6 @@ func (tt *TcpTimer) on_slow (t *Tunnel) {
 		t.c_event <- EV_END
 	}
 
+	tt.chk_rexmt(t)
 	return
 }

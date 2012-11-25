@@ -27,7 +27,7 @@ func NewServer(conn *net.UDPConn) (srv *Server) {
 	srv.conn = conn
 	srv.lock = new(sync.Mutex)
 	srv.dispatcher = make(map[string]*Tunnel)
-	srv.c_send = make(chan *SendBlock, 1)
+	srv.c_send = make(chan *SendBlock, TBUFSIZE)
 	go srv.sender()
 	return
 }
@@ -38,6 +38,9 @@ func (srv *Server) sender () {
 	var db *SendBlock
 
 	for {
+		if len(srv.c_send) > 30 {
+			sutils.Warning("send queue", len(srv.c_send))
+		}
 		db = <- srv.c_send
 
 		n, err = db.pkt.Pack()
@@ -80,8 +83,7 @@ func (srv *Server) get_tunnel(remote *net.UDPAddr, pkt *Packet, local net.Addr) 
 		return nil, nil
 	}
 
-	t = NewTunnel(remote, fmt.Sprintf("%d_srv", remote.Port))
-	t.c_send = srv.c_send
+	t = NewTunnel(remote, fmt.Sprintf("%d_srv", remote.Port), srv.c_send)
 	t.onclose = func () {
 		srv.lock.Lock()
 		defer srv.lock.Unlock()
