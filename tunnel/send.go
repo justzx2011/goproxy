@@ -64,6 +64,8 @@ func (t *Tunnel) send_packet(pkt *Packet) {
 	if DROPFLAG && rand.Intn(100) >= DROPRATE {
 		t.logger.Debug("drop packet")
 	}else{
+		err := pkt.Pack()
+		if err != nil { panic(err) }
 		t.c_send <- &SendBlock{t.remote, pkt}
 	}
 	return

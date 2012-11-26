@@ -5,12 +5,15 @@ import (
 	"io"
 	"log"
 	"net"
-	// "os"
+	"os"
 	"time"
-	// "runtime/pprof"
+	"runtime"
+	"runtime/pprof"
 	"./sutils"
 	"./tunnel"
 )
+
+const DOPROFILE = true
 
 var listenaddr string
 
@@ -47,6 +50,7 @@ func keepalive () {
 }
 
 func main () {
+	runtime.GOMAXPROCS(12)
 	changroup = make(map[chan uint8]uint8)
 	go keepalive()
 
@@ -55,11 +59,13 @@ func main () {
 		var buf [2048]byte
 		sutils.Info("connection comein")
 
-		// f, err := os.Create("/tmp/prof.prof")
-		// if err != nil {
-		// 	sutils.Err(err)
-		// }
-		// pprof.StartCPUProfile(f)		
+		if DOPROFILE {
+			f, err := os.Create("/tmp/prof.prof")
+			if err != nil {
+				sutils.Err(err)
+			}
+			pprof.StartCPUProfile(f)
+		}
 
 		c := make(chan uint8, 2)
 		changroup[c] = 0
@@ -67,7 +73,7 @@ func main () {
 			conn.Close()
 			sutils.Info("connnction breaking")
 			delete(changroup, c)
-			// pprof.StopCPUProfile()
+			if DOPROFILE { pprof.StopCPUProfile() }
 		}()
 
 		for {

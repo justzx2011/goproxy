@@ -24,7 +24,7 @@ _testmain.go
 goproxy
 logger
 test
-cilgo
+cligo
 echogo
 *.key
 *.log

@@ -37,14 +37,7 @@ func (c *Client) sender () {
 		db = <- c.t.c_send
 		if db == nil { break }
 
-		n, err = db.pkt.Pack()
-		if err != nil {
-			sutils.Err("Pack", err)
-			statcli.senderr += 1
-			continue
-		}
-
-		ns, err = c.conn.Write(db.pkt.buf[:n])
+		ns, err = c.conn.Write(db.pkt.buf[:db.pkt.n])
 		if err != nil {
 			statcli.senderr += 1
 			if strings.HasSuffix(err.Error(), "use of closed network connection") {
@@ -53,7 +46,7 @@ func (c *Client) sender () {
 			sutils.Err("Write Net", err)
 			continue
 		}
-		if ns != n {
+		if ns != db.pkt.n {
 			sutils.Err("Write don't send all buffer")
 		}
 		statcli.sendpkt += 1
@@ -73,7 +66,7 @@ func (c *Client) recver () {
 	for !c.isquit() {
 		pkt = get_packet()
 
-		n, err = c.conn.Read(pkt.buf[:])
+		pkt.n, err = c.conn.Read(pkt.buf[:])
 		if err != nil {
 			statcli.recverr += 1
 			if !strings.HasSuffix(err.Error(), "use of closed network connection") {
@@ -82,14 +75,7 @@ func (c *Client) recver () {
 			put_packet(pkt)
 			continue
 		}
-
-		err = pkt.Unpack(n)
-		if err != nil {
-			statcli.recverr += 1
-			put_packet(pkt)
-			sutils.Err("Unpack", err)
-			continue
-		}
+		
 		statcli.recvpkt += 1
 		statcli.recvsize += uint64(n)
 		c.t.c_recv <- pkt

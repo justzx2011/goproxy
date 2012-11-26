@@ -119,6 +119,11 @@ QUIT:
 			t.timer.on_timer(t)
 			continue
 		case pkt = <- t.c_recv:
+			err = pkt.Unpack()
+			if err != nil {
+				t.logger.Err(err)
+				continue
+			}
 			err = t.on_packet(pkt)
 			if err != nil { panic(err) }
 		case pkt = <- t.c_wrout:

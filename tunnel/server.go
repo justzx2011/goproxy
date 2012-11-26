@@ -37,19 +37,12 @@ func (srv *Server) sender () {
 	for {
 		db = <- srv.c_send
 
-		n, err = db.pkt.Pack()
-		if err != nil {
-			sutils.Err("Pack", err)
-			statsrv.senderr += 1
-			continue
-		}
-
-		ns, err = srv.conn.WriteToUDP(db.pkt.buf[:n], db.remote)
+		ns, err = srv.conn.WriteToUDP(db.pkt.buf[:db.pkt.n], db.remote)
 		if err != nil {
 			sutils.Err("WriteToUDP", err)
 			statsrv.senderr += 1
 		}
-		if ns != n {
+		if ns != db.pkt.n {
 			sutils.Err("Write don't send all buffer")
 		}
 		statsrv.sendpkt += 1
@@ -64,7 +57,7 @@ func (srv *Server) get_tunnel(remote *net.UDPAddr, pkt *Packet, local net.Addr) 
 	t, ok = srv.dispatcher[remotekey]
 	if ok { return }
 
-	if pkt.flag != SYN {
+	if uint8(pkt.buf[0]) != SYN {
 		sutils.Info("packet to unknow tunnel,", remotekey)
 		p := get_packet()
 		p.content = p.buf[HEADERSIZE:HEADERSIZE]
@@ -101,18 +94,11 @@ func (srv *Server) recver () {
 
 	for {
 		pkt = get_packet()
-		n, remote, err = srv.conn.ReadFromUDP(pkt.buf[:])
+		pkt.n, remote, err = srv.conn.ReadFromUDP(pkt.buf[:])
 		if err != nil {
 			statsrv.recverr += 1
 			put_packet(pkt)
 			sutils.Err("ReadFromUDP", err)
-			continue
-		}
-
-		err = pkt.Unpack(n)
-		if err != nil {
-			statsrv.recverr += 1
-			sutils.Err("Unpack", err)
 			continue
 		}
 

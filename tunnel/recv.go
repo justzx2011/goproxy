@@ -331,8 +331,8 @@ LOOP: // q_send...
 	case t.sack_count == RETRANS_SACKCOUNT:
 		inairlen := int32(0)
 		if len(t.q_send) > 0 { inairlen = t.seq_send - t.q_send.Front().seq }
-		t.ssthresh = max32(inairlen/2, 2*MSS)
-		t.cwnd = t.ssthresh + 3*MSS
+		t.ssthresh = max32(inairlen, 2*MSS)
+		t.cwnd = 10*MSS
 		t.logger.Info("congestion adjust, first sack,", t.cwnd, t.ssthresh)
 	case t.sack_count > RETRANS_SACKCOUNT:
 		t.cwnd += MSS

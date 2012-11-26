@@ -65,14 +65,8 @@ type Packet struct {
 	acktime int32
 	content []byte
 
+	n int
 	buf [MSS+HEADERSIZE]byte
-}
-
-func half_packet(content []byte) (n int, p *Packet) {
-	p = get_packet()
-	n = copy(p.buf[HEADERSIZE:], content)
-	p.content = p.buf[HEADERSIZE:HEADERSIZE+n]
-	return
 }
 
 func (p *Packet) read_status (t *Tunnel, flag uint8) {
@@ -107,10 +101,10 @@ func checksum(buf []byte) uint16 {
 	return uint16(c[0])<<8 + uint16(c[1])
 }
 
-func (p *Packet) Pack() (n int, err error) {
+func (p *Packet) Pack() (err error) {
 	size := len(p.content)
 	if size > MSS {
-		return 0, fmt.Errorf("packet too large, %d/%d", len(p.content), MSS)
+		return fmt.Errorf("packet too large, %d/%d", len(p.content), MSS)
 	}
 
 	p.buf[0] = byte(p.flag)
@@ -131,10 +125,11 @@ func (p *Packet) Pack() (n int, err error) {
 	// }
 	// binary.BigEndian.PutUint16(p.buf[23:25], uint16(crc))
 
-	return HEADERSIZE+size, err
+	p.n = HEADERSIZE+size
+	return err
 }
 
-func (p *Packet) Unpack(n int) (err error) {
+func (p *Packet) Unpack() (err error) {
 	p.flag = uint8(p.buf[0])
 	p.window = binary.BigEndian.Uint32(p.buf[1:5])
 	p.seq = int32(binary.BigEndian.Uint32(p.buf[5:9]))
@@ -144,7 +139,7 @@ func (p *Packet) Unpack(n int) (err error) {
 	size := uint16(binary.BigEndian.Uint16(p.buf[21:23]))
 	crc1 := uint16(binary.BigEndian.Uint16(p.buf[23:25]))
 
-	if n != HEADERSIZE + int(size) { return errors.New("packet broken") }
+	if p.n != HEADERSIZE + int(size) { return errors.New("packet broken") }
 	p.content = p.buf[HEADERSIZE:HEADERSIZE+size]
 
 	crc := checksum(p.buf[:23])

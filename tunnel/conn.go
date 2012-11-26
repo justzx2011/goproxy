@@ -61,7 +61,11 @@ func (tc TunnelConn) Write(b []byte) (n int, err error) {
 			size = MSS
 		}else{ size = len(b) - i }
 
-		size, pkt = half_packet(b[i:i+size])
+		pkt = get_packet()
+		s := copy(pkt.buf[HEADERSIZE:HEADERSIZE+size], b[i:i+size])
+		if s != size { panic("not all buffer copied to packet") }
+		pkt.content = pkt.buf[HEADERSIZE:HEADERSIZE+size]
+
 		if tc.t.status == CLOSED { return 0, io.EOF }
 		tc.t.c_wrin <- pkt
 		n += size

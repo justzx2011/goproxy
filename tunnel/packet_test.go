@@ -22,29 +22,29 @@ func rand_data () (data []byte, err error) {
 }
 
 func copypkt (t *testing.T, pkt *Packet) (p *Packet) {
-	n, err := pkt.Pack()
-	if err != nil {
-		t.Errorf(err.Error())
-	}
+	err := pkt.Pack()
+	if err != nil { t.Errorf(err.Error()) }
 
 	p = get_packet()
-	i := copy(p.buf[:n], pkt.buf[:n])
-	if i != n {
+	p.n = pkt.n
+	i := copy(p.buf[:p.n], pkt.buf[:pkt.n])
+	if i != pkt.n {
 		t.Errorf("not copy for all bytes")
 	}
 
-	err = p.Unpack(n)
-	if err != nil {
-		t.Errorf(err.Error())
-	}
+	err = p.Unpack()
+	if err != nil { t.Errorf(err.Error()) }
 	return
 }
 
 func PackOnce (t *testing.T, flag uint8) {
 	tick := get_nettick()
 
-	n, pkt := half_packet(data)
-	if n != MSS { t.Errorf("half packet not full all data") }
+	pkt := get_packet()
+	s := copy(pkt.buf[HEADERSIZE:], data)
+	pkt.content = pkt.buf[HEADERSIZE:HEADERSIZE+s]
+	if s != MSS { t.Errorf("half packet not full all data") }
+
 	pkt.flag = flag
 	pkt.window = 0
 	pkt.seq = 10
@@ -70,8 +70,11 @@ func PackOnceFail (t *testing.T, flag uint8) {
 	data, err := rand_data()
 	if err != nil { t.Errorf("rand data init failed") }
 
-	n, pkt := half_packet(data)
+	pkt := get_packet()
+	n := copy(pkt.buf[HEADERSIZE:], data)
+	pkt.content = pkt.buf[HEADERSIZE:HEADERSIZE+n]
 	if n != MSS { t.Errorf("half packet not full all data") }
+
 	pkt.flag = flag
 	pkt.window = 0
 	pkt.seq = 10
@@ -79,19 +82,16 @@ func PackOnceFail (t *testing.T, flag uint8) {
 	pkt.sndtime = tick
 	pkt.acktime = 0
 
-	n, err = pkt.Pack()
-	if err != nil {
-		t.Errorf(err.Error())
-	}
+	err = pkt.Pack()
+	if err != nil { t.Errorf(err.Error()) }
 
 	p := get_packet()
-	i := copy(p.buf[:n], pkt.buf[:n])
-	if i != n {
-		t.Errorf("not copy for all bytes")
-	}
+	p.n = pkt.n
+	i := copy(p.buf[:p.n], pkt.buf[:pkt.n])
+	if i != pkt.n { t.Errorf("not copy for all bytes") }
 	p.buf[44] = p.buf[44] + 1
 
-	err = p.Unpack(n)
+	err = p.Unpack()
 	if err == nil {
 		t.Errorf("crc wrong")
 	}

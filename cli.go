@@ -8,6 +8,7 @@ import (
 	// "math/rand"
 	"net"
 	"os"
+	"runtime"
 	"time"
 	"./sutils"
 	"./tunnel"
@@ -64,11 +65,11 @@ func pre_client (c chan uint8) {
 		delete(changroup, c)
 		conn.Close()
 		sutils.Info("quit")
-		// go pre_client(c)
+		go pre_client(c)
 	}()
 	sutils.Info("start")
 	// max := rand.Intn(100)
-	max := 1000000
+	max := 100000
 
 	for i := 0; i < max; i++ {
 		_, err = conn.Write(data)
@@ -98,6 +99,7 @@ func pre_client (c chan uint8) {
 }
 
 func main () {
+	runtime.GOMAXPROCS(12)
 	var err error
 
 	if len(flag.Args()) < 1 {
@@ -112,7 +114,7 @@ func main () {
 	}
 	changroup = make(map[chan uint8]*tunnel.TunnelConn)
 
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 4; i++ {
 		c := make(chan uint8, 2)
 		go pre_client(c)
 	}
