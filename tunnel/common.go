@@ -8,6 +8,7 @@ import (
 )
 
 const (
+	DEBUGMODE = true
 	DROPFLAG = false
 	DROPRATE = 90
 	MSS = 1024 // Sender Maximum Segment Size

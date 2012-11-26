@@ -7,24 +7,21 @@ import (
 	"../sutils"
 )
 
-var logsrv *sutils.Logger
 var statsrv Statistics
-
-func init () {
-	logsrv = sutils.NewLogger("server")
-}
 
 type Server struct {
 	conn *net.UDPConn
+	addr *net.UDPAddr
 	lock sync.Locker
 	dispatcher map[string]*Tunnel
 	handler func (net.Conn) (error)
 	c_send chan *SendBlock
 }
 
-func NewServer(conn *net.UDPConn) (srv *Server) {
+func NewServer(conn *net.UDPConn, addr *net.UDPAddr) (srv *Server) {
 	srv = new(Server)
 	srv.conn = conn
+	srv.addr = addr
 	srv.lock = new(sync.Mutex)
 	srv.dispatcher = make(map[string]*Tunnel)
 	srv.c_send = make(chan *SendBlock, TBUFSIZE)
@@ -38,25 +35,22 @@ func (srv *Server) sender () {
 	var db *SendBlock
 
 	for {
-		if len(srv.c_send) > 30 {
-			sutils.Warning("send queue", len(srv.c_send))
-		}
 		db = <- srv.c_send
 
 		n, err = db.pkt.Pack()
 		if err != nil {
-			logsrv.Err("Pack", err)
+			sutils.Err("Pack", err)
 			statsrv.senderr += 1
 			continue
 		}
 
 		ns, err = srv.conn.WriteToUDP(db.pkt.buf[:n], db.remote)
 		if err != nil {
-			logsrv.Err("WriteToUDP", err)
+			sutils.Err("WriteToUDP", err)
 			statsrv.senderr += 1
 		}
 		if ns != n {
-			logsrv.Err("Write don't send all buffer")
+			sutils.Err("Write don't send all buffer")
 		}
 		statsrv.sendpkt += 1
 		statsrv.sendsize += uint64(n)
@@ -66,14 +60,12 @@ func (srv *Server) sender () {
 func (srv *Server) get_tunnel(remote *net.UDPAddr, pkt *Packet, local net.Addr) (t *Tunnel, err error) {
 	var ok bool
 	remotekey := remote.String()
-	srv.lock.Lock()
-	defer srv.lock.Unlock()
 
 	t, ok = srv.dispatcher[remotekey]
 	if ok { return }
 
 	if pkt.flag != SYN {
-		logsrv.Info("packet to unknow tunnel,", remotekey)
+		sutils.Info("packet to unknow tunnel,", remotekey)
 		p := get_packet()
 		p.content = p.buf[HEADERSIZE:HEADERSIZE]
 		p.flag = RST
@@ -87,57 +79,47 @@ func (srv *Server) get_tunnel(remote *net.UDPAddr, pkt *Packet, local net.Addr) 
 	t.onclose = func () {
 		srv.lock.Lock()
 		defer srv.lock.Unlock()
-		logsrv.Info("close tunnel", remotekey)
+		sutils.Info("close tunnel", remotekey)
 		delete(srv.dispatcher, remotekey)
-		logsrv.Debug(srv.dispatcher)
 	}
 
+	srv.lock.Lock()
+	defer srv.lock.Unlock()
 	srv.dispatcher[remotekey] = t
 	go srv.handler(&TunnelConn{t, local})
-	logsrv.Info("create tunnel", remotekey)
+	sutils.Info("create tunnel", remotekey)
 
 	return
 }	
 
-func UdpServer (addr string, handler func (net.Conn) (error)) (err error) {
-	udpaddr, err := net.ResolveUDPAddr("udp", addr)
-	// if err != nil { return }
-	if err != nil { panic(err) }
-	conn, err := net.ListenUDP("udp", udpaddr)
-	// if err != nil { return }
-	if err != nil { panic(err) }
-	defer conn.Close()
-
-	srv := NewServer(conn)
-	srv.handler = handler
-
+func (srv *Server) recver () {
 	var n int
+	var err error
 	var pkt *Packet
 	var remote *net.UDPAddr
 	var t *Tunnel
 
 	for {
 		pkt = get_packet()
-		n, remote, err = conn.ReadFromUDP(pkt.buf[:])
-		logsrv.Debug("read something from server main")
+		n, remote, err = srv.conn.ReadFromUDP(pkt.buf[:])
 		if err != nil {
 			statsrv.recverr += 1
 			put_packet(pkt)
-			logsrv.Err("ReadFromUDP", err)
+			sutils.Err("ReadFromUDP", err)
 			continue
 		}
 
 		err = pkt.Unpack(n)
 		if err != nil {
 			statsrv.recverr += 1
-			logsrv.Err("Unpack", err)
+			sutils.Err("Unpack", err)
 			continue
 		}
 
-		t, err = srv.get_tunnel(remote, pkt, udpaddr)
+		t, err = srv.get_tunnel(remote, pkt, srv.addr)
 		if err != nil {
 			statsrv.recverr += 1
-			logsrv.Err("get tunnel", err)
+			sutils.Err("get tunnel", err)
 			continue
 		}
 		if t == nil {
@@ -148,8 +130,19 @@ func UdpServer (addr string, handler func (net.Conn) (error)) (err error) {
 		statsrv.recvpkt += 1
 		statsrv.recvsize += uint64(n)
 		t.c_recv <- pkt
-
-		// logsrv.Debug("stat srv", statsrv)
 	}
+}
+
+func UdpServer (addr string, handler func (net.Conn) (error)) (err error) {
+	udpaddr, err := net.ResolveUDPAddr("udp", addr)
+	if err != nil { panic(err) }
+	conn, err := net.ListenUDP("udp", udpaddr)
+	if err != nil { panic(err) }
+	defer conn.Close()
+
+	srv := NewServer(conn, udpaddr)
+	srv.handler = handler
+
+	srv.recver()
 	return
 }

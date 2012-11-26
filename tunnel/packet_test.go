@@ -6,6 +6,8 @@ import (
 	"testing"
 )
 
+var data []byte
+
 func rand_data () (data []byte, err error) {
 	data = make([]byte, MSS)
 
@@ -40,8 +42,6 @@ func copypkt (t *testing.T, pkt *Packet) (p *Packet) {
 
 func PackOnce (t *testing.T, flag uint8) {
 	tick := get_nettick()
-	data, err := rand_data()
-	if err != nil { t.Errorf("rand data init failed") }
 
 	n, pkt := half_packet(data)
 	if n != MSS { t.Errorf("half packet not full all data") }
@@ -100,6 +100,10 @@ func PackOnceFail (t *testing.T, flag uint8) {
 }
 
 func TestPack (t *testing.T) {
+	var err error
+	data, err = rand_data()
+	if err != nil { t.Errorf("rand data init failed") }
+
 	for i := 0; i < 1000; i++ {
 		PackOnce(t, DAT)
 		PackOnceFail(t, DAT)

@@ -7,14 +7,7 @@ import (
 	"../sutils"
 )
 
-var logcli *sutils.Logger
-var connlog map[string]*Tunnel
 var statcli Statistics
-
-func init () {
-	logcli = sutils.NewLogger("client")
-	connlog = make(map[string]*Tunnel)
-}
 
 type Client struct {
 	t *Tunnel
@@ -46,7 +39,7 @@ func (c *Client) sender () {
 
 		n, err = db.pkt.Pack()
 		if err != nil {
-			logcli.Err("Pack", err)
+			sutils.Err("Pack", err)
 			statcli.senderr += 1
 			continue
 		}
@@ -57,11 +50,11 @@ func (c *Client) sender () {
 			if strings.HasSuffix(err.Error(), "use of closed network connection") {
 				break
 			}
-			logcli.Err("Write Net", err)
+			sutils.Err("Write Net", err)
 			continue
 		}
 		if ns != n {
-			logcli.Err("Write don't send all buffer")
+			sutils.Err("Write don't send all buffer")
 		}
 		statcli.sendpkt += 1
 		statcli.sendsize += uint64(n)
@@ -81,12 +74,10 @@ func (c *Client) recver () {
 		pkt = get_packet()
 
 		n, err = c.conn.Read(pkt.buf[:])
-		// fixme: remove this
-		c.t.logger.Debug("something readed in client sender")
 		if err != nil {
 			statcli.recverr += 1
 			if !strings.HasSuffix(err.Error(), "use of closed network connection") {
-				logcli.Err("Read Net", err)
+				sutils.Err("Read Net", err)
 			}
 			put_packet(pkt)
 			continue
@@ -96,14 +87,12 @@ func (c *Client) recver () {
 		if err != nil {
 			statcli.recverr += 1
 			put_packet(pkt)
-			logcli.Err("Unpack", err)
+			sutils.Err("Unpack", err)
 			continue
 		}
 		statcli.recvpkt += 1
 		statcli.recvsize += uint64(n)
 		c.t.c_recv <- pkt
-
-		// logcli.Debug("stat cli", statcli)
 	}
 }
 
@@ -122,21 +111,17 @@ func DialTunnel(addr string) (tc net.Conn, err error) {
 	t = NewTunnel(udpaddr, name, make(chan *SendBlock, TBUFSIZE))
 	c := &Client{t, conn, name, make(chan uint8)}
 	t.onclose = func () {
-		logcli.Info("close tunnel", localaddr)
+		sutils.Info("close tunnel", localaddr)
 		conn.Close()
 		close(c.c_close)
 		close(t.c_send)
-
-		delete(connlog, localstr)
-		logcli.Debug(connlog)
 	}
 	go c.sender()
 	go c.recver()
 
 	t.c_event <- EV_CONNECT
 	<- t.c_connect
-	logcli.Info("create tunnel", localaddr)
-	connlog[localstr] = t
+	sutils.Info("create tunnel", localaddr)
 
 	return &TunnelConn{t, localaddr}, nil
 }

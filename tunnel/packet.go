@@ -1,11 +1,10 @@
 package tunnel
 
 import (
-	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"hash/crc32"
+	// "hash/crc32"
 )
 
 const HEADERSIZE = 25
@@ -94,66 +93,67 @@ func (p *Packet) String() string {
 		p.sndtime, p.acktime)
 }
 
+func checksum(buf []byte) uint16 {
+	var c [2]byte
+	size := len(buf)
+	if size % 2 == 1 {
+		c[0] ^= buf[size-1]
+		size -= 1
+	}
+	for i := 0; i < size; i+=2 {
+		c[0] ^= buf[i]
+		c[1] ^= buf[i+1]
+	}
+	return uint16(c[0])<<8 + uint16(c[1])
+}
+
 func (p *Packet) Pack() (n int, err error) {
-	buf := bytes.NewBuffer(p.buf[:0])
-	if len(p.content) > MSS {
+	size := len(p.content)
+	if size > MSS {
 		return 0, fmt.Errorf("packet too large, %d/%d", len(p.content), MSS)
 	}
 
-	err = binary.Write(buf, binary.BigEndian, &p.flag)
-	if err != nil { panic(err) }
-	err = binary.Write(buf, binary.BigEndian, &p.window)
-	if err != nil { panic(err) }
-	err = binary.Write(buf, binary.BigEndian, &p.seq)
-	if err != nil { panic(err) }
-	err = binary.Write(buf, binary.BigEndian, &p.ack)
-	if err != nil { panic(err) }
-	err = binary.Write(buf, binary.BigEndian, &p.sndtime)
-	if err != nil { panic(err) }
-	err = binary.Write(buf, binary.BigEndian, &p.acktime)
-	if err != nil { panic(err) }
-	err = binary.Write(buf, binary.BigEndian, uint16(len(p.content)))
-	if err != nil { panic(err) }
+	p.buf[0] = byte(p.flag)
+	binary.BigEndian.PutUint32(p.buf[1:5], uint32(p.window))
+	binary.BigEndian.PutUint32(p.buf[5:9], uint32(p.seq))
+	binary.BigEndian.PutUint32(p.buf[9:13], uint32(p.ack))
+	binary.BigEndian.PutUint32(p.buf[13:17], uint32(p.sndtime))
+	binary.BigEndian.PutUint32(p.buf[17:21], uint32(p.acktime))
+	binary.BigEndian.PutUint16(p.buf[21:23], uint16(size))
 
-	crc := crc32.Update(0, crc32.IEEETable, p.buf[:HEADERSIZE-4])
-	if len(p.content) != 0 {
-		crc = crc32.Update(crc, crc32.IEEETable, p.content)
-	}
-	err = binary.Write(buf, binary.BigEndian, uint16(crc))
-	if err != nil { panic(err) }
+	crc := checksum(p.buf[:23])
+	if size != 0 { crc ^= checksum(p.content) }
+	binary.BigEndian.PutUint16(p.buf[23:25], crc)
+	
+	// crc := crc32.Update(0, crc32.IEEETable, p.buf[:23])
+	// if size != 0 {
+	// 	crc = crc32.Update(crc, crc32.IEEETable, p.content)
+	// }
+	// binary.BigEndian.PutUint16(p.buf[23:25], uint16(crc))
 
-	return HEADERSIZE+len(p.content), err
+	return HEADERSIZE+size, err
 }
 
 func (p *Packet) Unpack(n int) (err error) {
-	var l uint16
-	var crc1 uint16
-	buf := bytes.NewBuffer(p.buf[:HEADERSIZE])
+	p.flag = uint8(p.buf[0])
+	p.window = binary.BigEndian.Uint32(p.buf[1:5])
+	p.seq = int32(binary.BigEndian.Uint32(p.buf[5:9]))
+	p.ack = int32(binary.BigEndian.Uint32(p.buf[9:13]))
+	p.sndtime = int32(binary.BigEndian.Uint32(p.buf[13:17]))
+	p.acktime = int32(binary.BigEndian.Uint32(p.buf[17:21]))
+	size := uint16(binary.BigEndian.Uint16(p.buf[21:23]))
+	crc1 := uint16(binary.BigEndian.Uint16(p.buf[23:25]))
 
-	err = binary.Read(buf, binary.BigEndian, &p.flag)
-	if err != nil { panic(err) }
-	err = binary.Read(buf, binary.BigEndian, &p.window)
-	if err != nil { panic(err) }
-	err = binary.Read(buf, binary.BigEndian, &p.seq)
-	if err != nil { panic(err) }
-	err = binary.Read(buf, binary.BigEndian, &p.ack)
-	if err != nil { panic(err) }
-	err = binary.Read(buf, binary.BigEndian, &p.sndtime)
-	if err != nil { panic(err) }
-	err = binary.Read(buf, binary.BigEndian, &p.acktime)
-	if err != nil { panic(err) }
-	err = binary.Read(buf, binary.BigEndian, &l)
-	if err != nil { panic(err) }
-	err = binary.Read(buf, binary.BigEndian, &crc1)
-	if err != nil { panic(err) }
+	if n != HEADERSIZE + int(size) { return errors.New("packet broken") }
+	p.content = p.buf[HEADERSIZE:HEADERSIZE+size]
 
-	if n != HEADERSIZE + int(l) { return errors.New("packet broken") }
-	p.content = p.buf[HEADERSIZE:HEADERSIZE+l]
+	crc := checksum(p.buf[:23])
+	if size != 0 { crc ^= checksum(p.content) }
 
-	crc := crc32.Update(0, crc32.IEEETable, p.buf[:HEADERSIZE-4])
-	if len(p.content) != 0 {
-		crc = crc32.Update(crc, crc32.IEEETable, p.content)
-	}
+	// crc := crc32.Update(0, crc32.IEEETable, p.buf[:23])
+	// if len(p.content) != 0 {
+	// 	crc = crc32.Update(crc, crc32.IEEETable, p.content)
+	// }
 
 	if crc1 != uint16(crc) {
 		return fmt.Errorf("crc32 fault %x/%x %s", crc1, uint16(crc), p)

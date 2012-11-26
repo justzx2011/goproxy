@@ -39,12 +39,12 @@ goproxy: goproxy.go
 
 echogo: echo.go
 	go build -o $@ $^
-	strip $@
+	# strip $@
 	chmod 755 $@
 
 cligo: cli.go
 	go build -o $@ $^
-	strip $@
+	# strip $@
 	chmod 755 $@
 
 testlog: logger

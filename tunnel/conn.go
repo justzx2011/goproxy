@@ -65,17 +65,14 @@ func (tc TunnelConn) Write(b []byte) (n int, err error) {
 		if tc.t.status == CLOSED { return 0, io.EOF }
 		tc.t.c_wrin <- pkt
 		n += size
-		tc.t.logger.Debug("Write a block")
 	}
 	return
 }
 
 func (tc TunnelConn) Close() (err error) {
 	if tc.t.isquit() { return }
-	tc.t.logger.Debug("closing")
 	if tc.t.status == EST { tc.t.c_event <- EV_CLOSE }
 	<- tc.t.c_close
-	tc.t.logger.Debug("closed")
 	return
 }
 

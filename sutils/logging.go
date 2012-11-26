@@ -150,40 +150,40 @@ func (l *Logger) Warning(a ...interface{}) {
 
 func Alert(a ...interface{}) {
 	if loglv < LOG_ALERT { return }
-	WriteLog("root", LOG_ALERT, a)
+	WriteLog("", LOG_ALERT, a)
 }
 
 func Crit(a ...interface{}) {
 	if loglv < LOG_CRIT { return }
-	WriteLog("root", LOG_CRIT, a)
+	WriteLog("", LOG_CRIT, a)
 }
 
 func Debug(a ...interface{}) {
 	if loglv < LOG_DEBUG { return }
-	WriteLog("root", LOG_DEBUG, a)
+	WriteLog("", LOG_DEBUG, a)
 }
 
 func Emerg(a ...interface{}) {
 	if loglv < LOG_EMERG { return }
-	WriteLog("root", LOG_EMERG, a)
+	WriteLog("", LOG_EMERG, a)
 }
 
 func Err(a ...interface{}) {
 	if loglv < LOG_ERR { return }
-	WriteLog("root", LOG_ERR, a)
+	WriteLog("", LOG_ERR, a)
 }
 
 func Info(a ...interface{}) {
 	if loglv < LOG_INFO { return }
-	WriteLog("root", LOG_INFO, a)
+	WriteLog("", LOG_INFO, a)
 }
 
 func Notice(a ...interface{}) {
 	if loglv < LOG_NOTICE { return }
-	WriteLog("root", LOG_NOTICE, a)
+	WriteLog("", LOG_NOTICE, a)
 }
 
 func Warning(a ...interface{}) {
 	if loglv < LOG_WARNING { return }
-	WriteLog("root", LOG_WARNING, a)
+	WriteLog("", LOG_WARNING, a)
 }

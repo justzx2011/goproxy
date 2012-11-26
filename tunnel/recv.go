@@ -283,7 +283,6 @@ func (t *Tunnel) recv_sack(pkt *Packet) {
 	buf := bytes.NewBuffer(pkt.content)
 
 	err = binary.Read(buf, binary.BigEndian, &id)
-	// t.logger.Debug("sack id", id)
 	switch err {
 	case io.EOF: err = nil
 	case nil:
@@ -316,7 +315,6 @@ LOOP: // q_send...
 				case nil:
 				default: panic(err)
 				}
-				// t.logger.Debug("sack id", id)
 			}
 		}
 		if i < len(t.q_send) { q_send = append(q_send, t.q_send[i:]...) }

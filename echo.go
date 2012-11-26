@@ -4,9 +4,10 @@ import (
 	"flag"
 	"io"
 	"log"
-	"math/rand"
 	"net"
+	// "os"
 	"time"
+	// "runtime/pprof"
 	"./sutils"
 	"./tunnel"
 )
@@ -53,16 +54,23 @@ func main () {
 		var n int
 		var buf [2048]byte
 		sutils.Info("connection comein")
+
+		// f, err := os.Create("/tmp/prof.prof")
+		// if err != nil {
+		// 	sutils.Err(err)
+		// }
+		// pprof.StartCPUProfile(f)		
+
 		c := make(chan uint8, 2)
 		changroup[c] = 0
 		defer func () {
 			conn.Close()
 			sutils.Info("connnction breaking")
 			delete(changroup, c)
+			// pprof.StopCPUProfile()
 		}()
-		max := rand.Intn(100)
 
-		for i := 0; i < max; i++ {
+		for {
 			n, err = conn.Read(buf[:])
 			if err == io.EOF {
 				return

@@ -114,8 +114,7 @@ QUIT:
 		case ev = <- t.c_event:
 			if ev == EV_END { break QUIT }
 			t.logger.Debug("on event", ev)
-			err = t.on_event(ev)
-			if err != nil { panic(err) }
+			t.on_event(ev)
 		case <- t.timer.ticker:
 			t.timer.on_timer(t)
 			continue
@@ -185,7 +184,7 @@ func (t *Tunnel) check_windows_block () {
 	}
 }
 
-func (t *Tunnel) on_event (ev uint8) (err error) {
+func (t *Tunnel) on_event (ev uint8) {
 	switch ev {
 	case EV_CONNECT:
 		if t.status != CLOSED {
@@ -201,7 +200,9 @@ func (t *Tunnel) on_event (ev uint8) (err error) {
 		t.send(FIN, nil)
 		t.timer.finwait = TM_FINWAIT
 	case EV_READ: t.send(ACK, nil)
-	default: return fmt.Errorf("unknown event %d", ev)
+	default:
+		t.logger.Err("unknown event", ev)
+		t.c_event <- EV_END
 	}
 	return
 }
