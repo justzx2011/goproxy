@@ -25,10 +25,7 @@ func put_buf (b []byte) {
 	}
 }
 
-func Copy(dst io.Writer, src io.Reader) (written int64, err error) {
-	buf := get_buf()
-	defer put_buf(buf)
-
+func coreCopy(dst io.Writer, src io.Reader, buf []byte) (written int64, err error) {
 	for {
 		nr, er := src.Read(buf)
 		if nr > 0 {
@@ -54,4 +51,16 @@ func Copy(dst io.Writer, src io.Reader) (written int64, err error) {
 		}
 	}
 	return written, err
+}
+
+func Copy(dst io.Writer, src io.Reader) (written int64, err error) {
+	buf := get_buf()
+	defer put_buf(buf)
+
+	return coreCopy(dst, src, buf)
+}
+
+func CopySize(dst io.Writer, src io.Reader, size int) (written int64, err error) {
+	buf := make([]byte, size)
+	return coreCopy(dst, src, buf)
 }

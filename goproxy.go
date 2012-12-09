@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	// "fmt"
-	"io"
+	// "io"
 	"log"
 	// "math/rand"
 	"net"
@@ -92,7 +92,7 @@ func run_client () {
 	var err error
 	var serveraddr string
 
-	if len(keyfile) == 0 {
+	if cryptWrapper == nil {
 		sutils.Warning("client mode without keyfile")
 	}
 
@@ -105,9 +105,10 @@ func run_client () {
 		var dstconn net.Conn
 		defer conn.Close()
 
-		tcpAddr, err := net.ResolveTCPAddr("tcp4", serveraddr)
+		sutils.Debug("connection comein")
+		tcpAddr, err := net.ResolveTCPAddr("tcp", serveraddr)
 		if err != nil { return }
-		dstconn, err = net.DialTCP("tcp4", nil, tcpAddr)
+		dstconn, err = net.DialTCP("tcp", nil, tcpAddr)
 		if err != nil { return }
 
 		if cryptWrapper != nil {
@@ -119,9 +120,9 @@ func run_client () {
 		go func () {
 			defer conn.Close()
 			defer dstconn.Close()
-			io.Copy(conn, dstconn)
+			tunnel.Copy(conn, dstconn)
 		}()
-		io.Copy(dstconn, conn)
+		tunnel.Copy(dstconn, conn)
 		return
 	})
 	if err != nil { sutils.Err(err) }
@@ -182,9 +183,9 @@ func run_server () {
 		go func () {
 			defer conn.Close()
 			defer dstconn.Close()
-			io.Copy(conn, dstconn)
+			tunnel.Copy(conn, dstconn)
 		}()
-		io.Copy(dstconn, conn)
+		tunnel.Copy(dstconn, conn)
 		return
 	})
 	if err != nil {

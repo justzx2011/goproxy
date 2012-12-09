@@ -56,7 +56,7 @@ def doloop(url, loops):
         except Exception, e: counter[2] += 1
         writest()
 
-    p = pool.Pool(200)
+    p = pool.Pool(300)
     for i in xrange(loops): p.spawn(tester)
     try: p.join()
     finally: writest()

@@ -33,8 +33,7 @@ func GetHandshake(reader *bufio.Reader) (methods []byte, err error) {
 	c, err = reader.ReadByte()
 	if err != nil { return }
 	if c != 0x05 {
-		err = errors.New("protocol error")
-		return
+		return nil, errors.New("protocol error")
 	}
 
 	methods, err = readLeadByte(reader)

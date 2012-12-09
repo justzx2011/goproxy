@@ -2,9 +2,9 @@ package cryptconn
 
 import (
 	"crypto/cipher"
-	// "encoding/hex"
+	"encoding/hex"
 	"net"
-	// "../sutils"
+	"../sutils"
 )
 
 type CryptConn struct {
@@ -17,13 +17,12 @@ func (sc CryptConn) Read(b []byte) (n int, err error) {
 	n, err = sc.TCPConn.Read(b)
 	if err != nil { return }
 	sc.in.XORKeyStream(b[:n], b[:n])
-	// sutils.Debug("recv", hex.Dump(b[:n]))
+	sutils.Debug("recv", hex.Dump(b[:n]))
 	return 
 }
 
 func (sc CryptConn) Write(b []byte) (n int, err error) {
-	// sutils.Debug("send", hex.Dump(b))
+	sutils.Debug("send", hex.Dump(b))
 	sc.out.XORKeyStream(b[:], b[:])
-	n, err =  sc.TCPConn.Write(b)
-	return
+	return sc.TCPConn.Write(b)
 }

@@ -4,10 +4,11 @@
 ## Version: $Id: Makefile,v 0.0 2012/11/02 06:18:14 shell Exp $
 ## Keywords: 
 ## X-URL: 
-TARGET=goproxy echogo cligo
-DEBUGOPT=--loglevel DEBUG
-DEBUGSRV=--logfile buf:/tmp/server.log
-DEBUGCLI=--logfile buf:/tmp/client.log
+TARGET=goproxy
+DEBUGOPT=--loglevel INFO
+# --keyfile keyfile
+# DEBUGSRV=--logfile buf:/tmp/server.log
+# DEBUGCLI=--logfile buf:/tmp/client.log
 
 all: clean build
 
@@ -26,11 +27,13 @@ test:
 
 server: goproxy
 	rm -f /tmp/server.log /tmp/srv.log
-	./goproxy --mode udpsrv --listen :8899 $(DEBUGOPT) $(DEBUGSRV) > /tmp/srv.log
+	./goproxy --mode server --listen :8899 $(DEBUGOPT) $(DEBUGSRV)
+# > /tmp/srv.log
 
 client: goproxy
 	rm -f /tmp/client.log /tmp/cli.log
-	./goproxy --mode udpcli --listen :1081 $(DEBUGOPT) $(DEBUGCLI) localhost:8899 > /tmp/cli.log
+	./goproxy --mode client --listen :1081 $(DEBUGOPT) $(DEBUGCLI) debox:8899
+# > /tmp/cli.log
 
 goproxy: goproxy.go
 	go build -o $@ $^
