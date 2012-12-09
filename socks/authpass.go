@@ -10,33 +10,31 @@ import (
 	"../sutils"
 )
 
-type AuthPassword struct {
+type SockServer struct {
 	userpass map[string]string
 }
 
-func NewAuthPassword() (ap *AuthPassword) {
-	ap = new(AuthPassword)
+func NewSockServer() (ap *SockServer) {
+	ap = new(SockServer)
 	ap.userpass = make(map[string]string)
 	return
 }
 
-func (ap *AuthPassword) Clean() {
+func (ap *SockServer) Clean() {
 	ap.userpass = make(map[string]string)
 }
 
-func (ap *AuthPassword) SetPassword(user string, password string) {
+func (ap *SockServer) SetPassword(user string, password string) {
 	ap.userpass[user] = password
-	return
 }
 
-func (ap *AuthPassword) LoadFile(filepath string) (err error) {
+func (ap *SockServer) LoadFile(filepath string) (err error) {
 	file, err := os.Open(filepath)
 	if err != nil { return }
 	defer file.Close()
 
-	sutils.ReadLines(file, func (line string) (err error){
+	return sutils.ReadLines(file, func (line string) (err error){
 		p := strings.SplitN(strings.TrimSpace(line), ":", 2)
-		if err != nil { return }
 		if len(p) != 2 {
 			log.Fatal("password file format wrong")
 		}
@@ -44,11 +42,9 @@ func (ap *AuthPassword) LoadFile(filepath string) (err error) {
 		ap.SetPassword(p[0], p[1])
 		return
 	})
-
-	return
 }
 
-func (ap *AuthPassword) SelectMethod(methods []byte) (method byte) {
+func (ap *SockServer) SelectMethod(methods []byte) (method byte) {
 	if len(ap.userpass) > 0 {
 		method = 0x02
 	}else{
@@ -63,7 +59,7 @@ func (ap *AuthPassword) SelectMethod(methods []byte) (method byte) {
 	return 0xff
 }
 
-func (ap *AuthPassword) Handler(conn net.Conn) (dstconn *net.TCPConn, err error) {
+func (ap *SockServer) Handler(conn net.Conn) (dstconn *net.TCPConn, err error) {
 	reader := bufio.NewReader(conn)
 	writer := bufio.NewWriter(conn)
 
@@ -72,12 +68,15 @@ func (ap *AuthPassword) Handler(conn net.Conn) (dstconn *net.TCPConn, err error)
 
 	method := ap.SelectMethod(methods)
 	SendHandshake(writer, method)
+
 	switch method {
 	case 0x02:
 		var user, password string
 		user, password, err = GetUserPass(reader)
+		if err != nil { return }
+
 		p, ok := ap.userpass[user]
-		log.Println(user, password, ap.userpass)
+		sutils.Debug("socks5 userpass auth:", user, password, ap.userpass)
 		if !ok || p != password {
 			SendAuthResult(writer, 0x01)
 			return
@@ -96,10 +95,11 @@ func (ap *AuthPassword) Handler(conn net.Conn) (dstconn *net.TCPConn, err error)
 
 	dstconn, err = net.DialTCP("tcp", nil, &dstaddr)
 	if err != nil {
+		sutils.Err("socks try to connect", dstaddr, "failed.")
 		SendResponse(writer, 0x04)
 		return
 	}
-	SendResponse(writer, 0x00)
 
+	SendResponse(writer, 0x00)
 	return
 }

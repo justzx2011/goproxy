@@ -4,20 +4,27 @@ import (
 	"bufio"
 	"errors"
 	"encoding/binary"
+	"io"
 	"net"
 	"../sutils"
 )
 
-func GetString(reader *bufio.Reader) (s string, err error) {
-	var c byte
+func readLeadByte(reader io.Reader) (b []byte, err error) {
+	var c [1]byte
 
-	c, err = reader.ReadByte()
+	n, err := reader.Read(c[:])
 	if err != nil { return }
+	if n < 1 { return nil, io.EOF }
 
-	buf, err := sutils.ReadBytes(reader, int(c))
-	if err != nil { return }
-	s = string(buf)
+	b = make([]byte, int(c[0]))
+	_, err = io.ReadFull(reader, b)
 	return
+}
+
+func readString(reader io.Reader) (s string, err error) {
+	b, err := readLeadByte(reader)
+	if err != nil { return }
+	return string(b), nil
 }
 
 func GetHandshake(reader *bufio.Reader) (methods []byte, err error) {
@@ -30,15 +37,13 @@ func GetHandshake(reader *bufio.Reader) (methods []byte, err error) {
 		return
 	}
 
-	c, err = reader.ReadByte()
-	if err != nil { return }
-
-	methods, err = sutils.ReadBytes(reader, int(c))
+	methods, err = readLeadByte(reader)
 	return
 }
 
 func SendHandshake(writer *bufio.Writer, status byte) (err error) {
-	writer.Write([]byte{0x05, status})
+	_, err = writer.Write([]byte{0x05, status})
+	if err != nil { return }
 	return writer.Flush()
 }
 
@@ -50,9 +55,9 @@ func GetUserPass(reader *bufio.Reader) (user string, password string, err error)
 		return
 	}
 
-	user, err = GetString(reader)
+	user, err = readString(reader)
 	if err != nil { return }
-	password, err = GetString(reader)
+	password, err = readString(reader)
 	return
 }
 
@@ -61,9 +66,8 @@ func SendAuthResult(writer *bufio.Writer, status byte) (err error) {
 
 	buf[1] = status
 	n, err := writer.Write(buf)
-	if n != len(buf) { err = errors.New("send buffer full") }
-	writer.Flush()
-	return
+	if n != len(buf) { return errors.New("send buffer full") }
+	return writer.Flush()
 }
 
 func GetConnect(reader *bufio.Reader) (addr net.TCPAddr, err error) {
@@ -72,40 +76,30 @@ func GetConnect(reader *bufio.Reader) (addr net.TCPAddr, err error) {
 	var port uint16
 
 	buf := make([]byte, 3)
-	n, err = reader.Read(buf)
+	_, err = io.ReadFull(reader, buf)
 	if err != nil { return }
-	if n != 3 {
-		err = errors.New("header length dismatch")
-		return
-	}
 	if buf[0] != 0x05 || buf[1] != 0x01 || buf[2] != 0x00 {
 		err = errors.New("connect packet wrong format")
 		return
 	}
 
 	c, err = reader.ReadByte()
+	if err != nil { return }
+
 	switch c {
 	case 0x01: // IP V4 address
 		sutils.Debug("socks with ipaddr")
-		n, err = reader.Read(addr.IP[:])
+		n, err = reader.Read(addr.IP[:4])
 		if err != nil { return }
-		if n != 4 {
-			err = errors.New("ipaddr v4 length dismatch")
-			return
-		}
+		if n != 4 { return addr, errors.New("ipaddr v4 length dismatch") }
 	case 0x03: // DOMAINNAME
 		sutils.Debug("socks with domain")
 		var ips []net.IP
-		c, err = reader.ReadByte()
+		var s string
+
+		s, err = readString(reader)
 		if err != nil { return }
-		buf := make([]byte, c)
-		n, err = reader.Read(buf)
-		if err != nil { return }
-		if n != int(c) {
-			err = errors.New("domain length dismatch")
-			return
-		}
-		ips, err = net.LookupIP(string(buf))
+		ips, err = net.LookupIP(s)
 		if err != nil { return }
 		for _, ip := range ips {
 			if ip.To4() != nil {
@@ -114,8 +108,7 @@ func GetConnect(reader *bufio.Reader) (addr net.TCPAddr, err error) {
 			}
 		}
 	case 0x04: // IP V6 address
-		err = errors.New("ipv6 not support yet")
-		return
+		return addr, errors.New("ipv6 not support yet")
 	}
 
 	err = binary.Read(reader, binary.BigEndian, &port)
@@ -130,8 +123,6 @@ func SendResponse(writer *bufio.Writer, res byte) (err error) {
 
 	buf[1] = res
 	n, err = writer.Write(buf)
-	if n != len(buf) { err = errors.New("send buffer full") }
-	writer.Flush()
-
-	return 
+	if n != len(buf) { return errors.New("send buffer full") }
+	return writer.Flush()
 }

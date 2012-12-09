@@ -3,26 +3,24 @@ package sutils
 import (
 	"io"
 	"bufio"
-	"errors"
 )
 
 func ReadLines(r io.Reader, f func(string) (error)) (err error) {
 	var line string
+	var loop bool = true
 
 	reader := bufio.NewReader(r)
-	line, _ = reader.ReadString('\n')
-	for len(line) != 0 {
+	for loop {
+		line, _ = reader.ReadString('\n')
+		switch err {
+		case io.EOF:
+			if len(line) == 0 { return }
+			loop = false
+		case nil:
+		default: return
+		}
 		err = f(line)
 		if err != nil { return err }
-		line, _ = reader.ReadString('\n')
 	}
 	return
-}
-
-func ReadBytes(r *bufio.Reader, c int) (b []byte, err error) {
-	var n int
-	b = make([]byte, c)
-	n, err = r.Read(b)
-	if n != c { err = errors.New("read bytes dismatch") }
-	return 
 }

@@ -1,14 +1,13 @@
 package cryptconn
 
 import (
-	"bufio"
 	"crypto/cipher"
 	"crypto/aes"
 	"crypto/des"
 	"crypto/rc4"
+	"io"
 	"net"
 	"os"
-	"../sutils"
 )
 
 func ReadKey(keyfile string, keysize int, ivsize int) (key []byte, iv []byte, err error) {
@@ -16,14 +15,16 @@ func ReadKey(keyfile string, keysize int, ivsize int) (key []byte, iv []byte, er
 	if err != nil { return }
 	defer file.Close()
 
-	reader := bufio.NewReader(file)
-	key, err = sutils.ReadBytes(reader, keysize)
+	key = make([]byte, keysize)
+	_, err = io.ReadFull(file, key)
 	if err != nil { return }
-	iv, err = sutils.ReadBytes(reader, keysize)
+
+	iv = make([]byte, ivsize)
+	_, err = io.ReadFull(file, iv)
 	return
 }
 
-func NewCryptConn(method string, keyfile string) (f func (net.Conn) (net.Conn, error), err error) {
+func NewCryptWrapper(method string, keyfile string) (f func (net.Conn) (net.Conn, error), err error) {
 	var g func(net.Conn, []byte, []byte) (net.Conn, error)
 	var keylen int
 	var ivlen int
@@ -47,9 +48,7 @@ func NewCryptConn(method string, keyfile string) (f func (net.Conn) (net.Conn, e
 		g = NewRC4Conn
 	}
 
-	var key []byte
-	var iv []byte
-	key, iv, err = ReadKey(keyfile, keylen, ivlen)
+	key, iv, err := ReadKey(keyfile, keylen, ivlen)
 	if err != nil { return }
 	return func(conn net.Conn) (sc net.Conn, err error) {
 		return g(conn, key, iv)

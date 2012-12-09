@@ -2,12 +2,12 @@ package main
 
 import (
 	"flag"
-	"fmt"
+	// "fmt"
 	"io"
 	"log"
 	// "math/rand"
 	"net"
-	"os"
+	// "os"
 	"./socks"
 	"./sutils"
 	"./cryptconn"
@@ -21,16 +21,10 @@ var passfile string
 var runmode string
 var logger *sutils.Logger
 
-func Usage() {
-	fmt.Printf("Usage of %s:\n", os.Args[0])
-	flag.PrintDefaults()
-}
-
 func init() {
 	var logfile string
 	var loglevel string
 
-	// flag.Usage = Usage
 	flag.StringVar(&runmode, "mode", "", "udpcli/udpsrv/client/server mode")
 	flag.StringVar(&cipher, "cipher", "aes", "aes des tripledes rc4")
 	flag.StringVar(&keyfile, "keyfile", "", "key and iv file")
@@ -51,7 +45,7 @@ func init() {
 	// rand.Seed(1)
 }
 
-var f func (net.Conn) (net.Conn, error) = nil
+var cryptWrapper func (net.Conn) (net.Conn, error) = nil
 
 func run_udpcli () {
 	// need --listenaddr serveraddr
@@ -99,7 +93,7 @@ func run_client () {
 	var serveraddr string
 
 	if len(keyfile) == 0 {
-		log.Println("WARN: client mode without keyfile")
+		sutils.Warning("client mode without keyfile")
 	}
 
 	if len(flag.Args()) < 1 {
@@ -110,16 +104,17 @@ func run_client () {
 	err = sutils.TcpServer(listenaddr, func (conn net.Conn) (err error) {
 		var dstconn net.Conn
 		defer conn.Close()
+
 		tcpAddr, err := net.ResolveTCPAddr("tcp4", serveraddr)
 		if err != nil { return }
 		dstconn, err = net.DialTCP("tcp4", nil, tcpAddr)
 		if err != nil { return }
-		defer dstconn.Close()
 
-		if f != nil {
-			dstconn, err = f(dstconn)
+		if cryptWrapper != nil {
+			dstconn, err = cryptWrapper(dstconn)
 			if err != nil { return }
 		}
+		defer dstconn.Close()
 
 		go func () {
 			defer conn.Close()
@@ -129,16 +124,14 @@ func run_client () {
 		io.Copy(dstconn, conn)
 		return
 	})
-	if err != nil {
-		log.Println(err.Error())
-	}
+	if err != nil { sutils.Err(err) }
 }
 
 func run_udpsrv () {
 	// need --passfile --listenaddr
 	var err error
 		
-	ap := socks.NewAuthPassword()
+	ap := socks.NewSockServer()
 	if len(passfile) > 0 { ap.LoadFile(passfile) }
 	err = tunnel.UdpServer(listenaddr, func (conn net.Conn) (err error) {
 		// if f != nil {
@@ -170,12 +163,15 @@ func run_server () {
 	// need --passfile --listenaddr
 	var err error
 		
-	ap := socks.NewAuthPassword()
+	ap := socks.NewSockServer()
 	if len(passfile) > 0 { ap.LoadFile(passfile) }
 	err = sutils.TcpServer(listenaddr, func (conn net.Conn) (err error) {
-		if f != nil {
-			conn, err = f(conn)
-			if err != nil { return }
+		if cryptWrapper != nil {
+			conn, err = cryptWrapper(conn)
+			if err != nil {
+				logger.Err("encrypt failed,", err)
+				return
+			}
 		}
 
 		defer conn.Close()
@@ -202,7 +198,7 @@ func main() {
 	var err error
 
 	if len(keyfile) > 0 {
-		f, err = cryptconn.NewCryptConn(cipher, keyfile)
+		cryptWrapper, err = cryptconn.NewCryptWrapper(cipher, keyfile)
 		if err != nil {
 			log.Fatal("crypto not work, cipher or keyfile wrong.")
 		}
@@ -221,7 +217,5 @@ func main() {
 	case "server":
 		sutils.Info("server mode")
 		run_server()
-	default:
-		Usage()
 	}
 }
