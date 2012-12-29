@@ -88,7 +88,8 @@ func GetConnect(reader *bufio.Reader) (addr net.TCPAddr, err error) {
 	switch c {
 	case 0x01: // IP V4 address
 		sutils.Debug("socks with ipaddr")
-		n, err = reader.Read(addr.IP[:4])
+		addr.IP = make([]byte, 4)
+		n, err = reader.Read(addr.IP[:])
 		if err != nil { return }
 		if n != 4 { return addr, errors.New("ipaddr v4 length dismatch") }
 	case 0x03: // DOMAINNAME
