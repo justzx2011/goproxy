@@ -44,6 +44,10 @@ func GetLevelByName(name string) (lv int, err error) {
 }
 
 func SetupLog(logfile string, loglevel int, f int) (err error) {
+	// logfile is empty string: use console
+	// udp address: syslog format, use f as facility
+	// buf:filename: buffered file
+	// filename: output to file
 	loglv = loglevel
 	facility = f
 
