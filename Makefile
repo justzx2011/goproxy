@@ -18,9 +18,20 @@ install:
 clean:
 	rm -f $(TARGET)
 
-goproxy: goproxy.go
+goproxy: goproxy.go server.go client.go
 	go build -o $@ $^
 	strip $@
 	chmod 755 $@
+
+glookup: glookup.go
+	go build -o $@ $^
+	strip $@
+	chmod 755 $@
+
+tsrv: goproxy
+	./goproxy -loglevel=DEBUG -mode=server
+
+tcli: goproxy
+	./goproxy -loglevel=DEBUG -mode=client -listen :1080 localhost:5233
 
 ### Makefile ends here

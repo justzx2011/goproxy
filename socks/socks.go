@@ -40,7 +40,7 @@ func GetHandshake(reader *bufio.Reader) (methods []byte, err error) {
 	return
 }
 
-func SendHandshake(writer *bufio.Writer, status byte) (err error) {
+func SendHandshakeResponse(writer *bufio.Writer, status byte) (err error) {
 	_, err = writer.Write([]byte{0x05, status})
 	if err != nil { return }
 	return writer.Flush()
@@ -69,10 +69,9 @@ func SendAuthResult(writer *bufio.Writer, status byte) (err error) {
 	return writer.Flush()
 }
 
-func GetConnect(reader *bufio.Reader) (addr net.TCPAddr, err error) {
+// func GetConnect(reader *bufio.Reader) (addr net.TCPAddr, err error) {
+func GetConnect(reader *bufio.Reader) (hostname string, port uint16, err error) {
 	var c byte
-	var n int
-	var port uint16
 
 	buf := make([]byte, 3)
 	_, err = io.ReadFull(reader, buf)
@@ -88,36 +87,24 @@ func GetConnect(reader *bufio.Reader) (addr net.TCPAddr, err error) {
 	switch c {
 	case 0x01: // IP V4 address
 		sutils.Debug("socks with ipaddr")
-		addr.IP = make([]byte, 4)
-		n, err = reader.Read(addr.IP[:])
+		ip := new(net.IP)
+		_, err = io.ReadFull(reader, (*ip))
 		if err != nil { return }
-		if n != 4 { return addr, errors.New("ipaddr v4 length dismatch") }
+		hostname = ip.String()
 	case 0x03: // DOMAINNAME
 		sutils.Debug("socks with domain")
-		var ips []net.IP
-		var s string
-
-		s, err = readString(reader)
+		hostname, err = readString(reader)
 		if err != nil { return }
-		ips, err = net.LookupIP(s)
-		if err != nil { return }
-		for _, ip := range ips {
-			if ip.To4() != nil {
-				addr.IP = ip
-				break
-			}
-		}
 	case 0x04: // IP V6 address
-		return addr, errors.New("ipv6 not support yet")
+		err = errors.New("ipv6 not support yet")
+		return 
 	}
 
 	err = binary.Read(reader, binary.BigEndian, &port)
-	if err != nil { return }
-	addr.Port = int(port)
 	return
 }
 
-func SendResponse(writer *bufio.Writer, res byte) (err error) {
+func SendConnectResponse(writer *bufio.Writer, res byte) (err error) {
 	var buf []byte = []byte{0x05, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 	var n int
 
@@ -126,3 +113,97 @@ func SendResponse(writer *bufio.Writer, res byte) (err error) {
 	if n != len(buf) { return errors.New("send buffer full") }
 	return writer.Flush()
 }
+
+// type SockServer struct {
+// 	userpass map[string]string
+// }
+
+// func NewSockServer() (ap *SockServer) {
+// 	ap = new(SockServer)
+// 	ap.userpass = make(map[string]string)
+// 	return
+// }
+
+// func (ap *SockServer) Clean() {
+// 	ap.userpass = make(map[string]string)
+// }
+
+// func (ap *SockServer) SetPassword(user string, password string) {
+// 	ap.userpass[user] = password
+// }
+
+// func (ap *SockServer) LoadFile(filepath string) (err error) {
+// 	file, err := os.Open(filepath)
+// 	if err != nil { return }
+// 	defer file.Close()
+
+// 	return sutils.ReadLines(file, func (line string) (err error){
+// 		p := strings.SplitN(strings.TrimSpace(line), ":", 2)
+// 		if len(p) != 2 {
+// 			log.Fatal("password file format wrong")
+// 		}
+
+// 		ap.SetPassword(p[0], p[1])
+// 		return
+// 	})
+// }
+
+// func (ap *SockServer) SelectMethod(methods []byte) (method byte) {
+// 	if len(ap.userpass) > 0 {
+// 		method = 0x02
+// 	}else{
+// 		method = 0x00
+// 	}
+
+// 	for _, m := range methods {
+// 		if method == m {
+// 			return method
+// 		}
+// 	}
+// 	return 0xff
+// }
+
+// func (ap *SockServer) Handler(conn net.Conn) (dstconn *net.TCPConn, err error) {
+// 	reader := bufio.NewReader(conn)
+// 	writer := bufio.NewWriter(conn)
+
+// 	methods, err := GetHandshake(reader)
+// 	if err != nil { return }
+
+// 	method := ap.SelectMethod(methods)
+// 	SendHandshake(writer, method)
+
+// 	switch method {
+// 	case 0x02:
+// 		var user, password string
+// 		user, password, err = GetUserPass(reader)
+// 		if err != nil { return }
+
+// 		p, ok := ap.userpass[user]
+// 		sutils.Debug("socks5 userpass auth:", user, password, ap.userpass)
+// 		if !ok || p != password {
+// 			SendAuthResult(writer, 0x01)
+// 			return
+// 		}
+// 		err = SendAuthResult(writer, 0x00)
+// 		if err != nil { return }
+// 	case 0xff:
+// 		return nil, errors.New("auth method not supported")
+// 	}
+// 	sutils.Debug("handshark ok")
+
+// 	var dstaddr net.TCPAddr
+// 	dstaddr, err = GetConnect(reader)
+// 	if err != nil { return }
+// 	sutils.Debug("dst:", dstaddr)
+
+// 	dstconn, err = net.DialTCP("tcp", nil, &dstaddr)
+// 	if err != nil {
+// 		sutils.Err("socks try to connect", dstaddr, "failed.")
+// 		SendResponse(writer, 0x04)
+// 		return
+// 	}
+
+// 	SendResponse(writer, 0x00)
+// 	return
+// }

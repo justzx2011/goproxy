@@ -22,10 +22,6 @@ _testmain.go
 *.exe
 
 goproxy
-logger
-test
-cligo
-echogo
 *.key
 *.log
 *.pyc

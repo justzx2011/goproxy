@@ -2,12 +2,8 @@ package main
 
 import (
 	"flag"
-	// "fmt"
-	"io"
 	"log"
 	"net"
-	// "os"
-	"./socks"
 	"./sutils"
 	"./cryptconn"
 )
@@ -42,81 +38,6 @@ func init() {
 }
 
 var cryptWrapper func (net.Conn) (net.Conn, error) = nil
-
-func run_client () {
-	// need --listenaddr serveraddr
-	var err error
-	var serveraddr string
-
-	if cryptWrapper == nil {
-		sutils.Warning("client mode without keyfile")
-	}
-
-	if len(flag.Args()) < 1 {
-		log.Fatal("args not enough")
-	}
-	serveraddr = flag.Args()[0]
-
-	err = sutils.TcpServer(listenaddr, func (conn net.Conn) (err error) {
-		var dstconn net.Conn
-		defer conn.Close()
-
-		sutils.Debug("connection comein")
-		tcpAddr, err := net.ResolveTCPAddr("tcp", serveraddr)
-		if err != nil { return }
-		dstconn, err = net.DialTCP("tcp", nil, tcpAddr)
-		if err != nil { return }
-
-		if cryptWrapper != nil {
-			dstconn, err = cryptWrapper(dstconn)
-			if err != nil { return }
-		}
-		defer dstconn.Close()
-
-		go func () {
-			defer conn.Close()
-			defer dstconn.Close()
-			io.Copy(conn, dstconn)
-		}()
-		io.Copy(dstconn, conn)
-		return
-	})
-	if err != nil { sutils.Err(err) }
-}
-
-func run_server () {
-	// need --passfile --listenaddr
-	var err error
-		
-	ap := socks.NewSockServer()
-	if len(passfile) > 0 { ap.LoadFile(passfile) }
-	err = sutils.TcpServer(listenaddr, func (conn net.Conn) (err error) {
-		if cryptWrapper != nil {
-			conn, err = cryptWrapper(conn)
-			if err != nil {
-				logger.Err("encrypt failed,", err)
-				return
-			}
-		}
-
-		defer conn.Close()
-		dstconn, err := ap.Handler(conn)
-		if err != nil { return }
-		defer dstconn.Close()
-
-		go func () {
-			defer conn.Close()
-			defer dstconn.Close()
-			io.Copy(conn, dstconn)
-		}()
-		io.Copy(dstconn, conn)
-		return
-	})
-	if err != nil {
-		log.Println(err.Error())
-	}
-	return
-}
 
 func main() {
 	var err error
