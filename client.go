@@ -69,11 +69,16 @@ func list_contain(ipnetlist []net.IPNet, ip net.IP) (bool) {
 
 func select_connfunc(hostname string, port uint16) (connfunc func (string, uint16) (net.Conn, error), err error) {
 	if blacklist == nil { return connect_qsocks, nil }
-	addrs, err := dns.LookupIP(hostname)
-	if err != nil { return }
+	addr := net.ParseIP(hostname)
+	if addr == nil {
+		var addrs []net.IP
+		addrs, err = dns.LookupIP(hostname)
+		if err != nil { return }
+		addr = addrs[0]
+	}
 	switch {
-	case list_contain(blacklist, addrs[0]):
-		sutils.Debug("ip", addrs[0], "in black list.")
+	case list_contain(blacklist, addr):
+		sutils.Debug("ip", addr, "in black list.")
 		return connect_direct, nil
 	}
 	return connect_qsocks, nil

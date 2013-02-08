@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"io"
-	"io/ioutil"
+	// "io/ioutil"
 	"net"
 	"net/http"
 	"strconv"
@@ -13,8 +13,16 @@ import (
 
 var http_client http.Client
 
-func http_handler(w http.ResponseWriter, r *http.Request) {
+type Proxy struct {}
+
+func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	sutils.Info(r.Method, r.URL)
+
+	if r.Method == "CONNECT" {
+		p.Connect(w, r)
+		return
+	}
+
 	r.RequestURI = ""
 	resp, err := http_client.Do(r)
 	if err != nil {
@@ -31,9 +39,47 @@ func http_handler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Set-Cookie", c.Raw)
 	}
 	w.WriteHeader(resp.StatusCode)
-	result, err := ioutil.ReadAll(resp.Body)
-	if err != nil && err != io.EOF { panic(err) }
-	w.Write(result)
+	_, err = io.Copy(w, resp.Body)
+	if err != nil {
+		sutils.Err(err)
+		return
+	}
+	return
+}
+
+func (p *Proxy) Connect(w http.ResponseWriter, r *http.Request) {
+	hij, ok := w.(http.Hijacker)
+	if !ok {
+		sutils.Err("httpserver does not support hijacking")
+		return
+	}
+	srcconn, _, err := hij.Hijack()
+	if err != nil {
+		sutils.Err("Cannot hijack connection ", err)
+		return
+	}
+	defer srcconn.Close()
+
+	host := r.URL.Host
+	if !strings.Contains(host, ":") {
+		host += ":80"
+	}
+	dstconn, err := dial_conn("tcp", host)
+	if err != nil {
+		sutils.Err(err)
+		srcconn.Write([]byte("HTTP/1.0 502 OK\r\n\r\n"))
+		return
+	}
+	defer dstconn.Close()
+	srcconn.Write([]byte("HTTP/1.0 200 OK\r\n\r\n"))
+
+	go func () {
+		defer srcconn.Close()
+		defer dstconn.Close()
+		io.Copy(srcconn, dstconn)
+	}()
+	io.Copy(dstconn, srcconn)
+	return
 }
 
 func dial_conn(network, addr string) (c net.Conn, err error) {
@@ -65,6 +111,6 @@ func run_httproxy() {
 
 	http_client = http.Client{Transport: &http.Transport{Dial: dial_conn}}
 
-	http.HandleFunc("/", http_handler)
-	http.ListenAndServe(listenaddr, nil)
+	// http.HandleFunc("/", http_handler)
+	http.ListenAndServe(listenaddr, &Proxy{})
 }
