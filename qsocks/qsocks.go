@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
-	"../sutils"
 )
 
 func fillString(b []byte, s string) (r []byte) {
@@ -46,7 +45,6 @@ func RecvRequest(conn net.Conn) (username string, password string,
 	_, err = io.ReadFull(conn, buf1)
 	if err != nil { return }
 	size := binary.BigEndian.Uint16(buf1[16:])
-	sutils.Debug("size:", size)
 
 	buf2 := make([]byte, size-18)
 	_, err = io.ReadFull(conn, buf2)

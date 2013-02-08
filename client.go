@@ -5,9 +5,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"compress/gzip"
 	"io"
-	"log"
 	"net"
+	"os"
+	"strings"
+	"./dns"
 	"./qsocks"
 	"./socks"
 	"./sutils"
@@ -36,8 +39,44 @@ func connect_direct(hostname string, port uint16) (conn net.Conn, err error) {
 	return net.Dial("tcp", fmt.Sprintf("%s:%d", hostname, port))
 }
 
-func select_connfunc(hostname string, port uint16) (func (string, uint16) (net.Conn, error)) {
-	return connect_qsocks
+var blacklist []net.IPNet
+
+func readlist() (err error) {
+	var f io.Reader
+	f, err = os.Open(blackfile)
+	if err != nil { return }
+	if strings.HasSuffix(blackfile, ".gz") {
+		f, err = gzip.NewReader(f)
+		if err != nil { return }
+	}
+	err = sutils.ReadLines(f, func (line string) (err error){
+		addrs := strings.Split(line, " ")
+		ipnet := net.IPNet{net.ParseIP(addrs[0]), net.IPMask(net.ParseIP(addrs[0]))}
+		blacklist = append(blacklist, ipnet)
+		return
+	})
+	if err != nil { return }
+	sutils.Info("blacklist loaded,", len(blacklist), "record(s).")
+	return
+}
+
+func list_contain(ipnetlist []net.IPNet, ip net.IP) (bool) {
+	for _, ipnet := range ipnetlist {
+		if ipnet.Contains(ip) { return true }
+	}
+	return false
+}
+
+func select_connfunc(hostname string, port uint16) (connfunc func (string, uint16) (net.Conn, error), err error) {
+	if blacklist == nil { return connect_qsocks, nil }
+	addrs, err := dns.LookupIP(hostname)
+	if err != nil { return }
+	switch {
+	case list_contain(blacklist, addrs[0]):
+		sutils.Debug("ip", addrs[0], "in black list.")
+		return connect_direct, nil
+	}
+	return connect_qsocks, nil
 }
 
 func socks_handler(conn net.Conn) (srcconn net.Conn, dstconn net.Conn, err error) {
@@ -60,19 +99,22 @@ func socks_handler(conn net.Conn) (srcconn net.Conn, dstconn net.Conn, err error
 
 	hostname, port, err := socks.GetConnect(reader)
 	if err != nil {
-		socks.SendConnectResponse(writer, 0xff)
+		// general SOCKS server failure
+		socks.SendConnectResponse(writer, 0x01)
 		return
 	}
 	sutils.Debug("dst:", hostname, port)
 
-	connfunc := select_connfunc(hostname, port)
-	if connfunc == nil {
-		socks.SendConnectResponse(writer, 0xff)
+	connfunc, err := select_connfunc(hostname, port)
+	if err != nil {
+		// Address type not supported
+		socks.SendConnectResponse(writer, 0x08)
 		return nil, nil, errors.New("no conn function can be used")
 	}
 	dstconn, err = connfunc(hostname, port)
 	if err != nil {
-		socks.SendConnectResponse(writer, 0xff)
+		// Connection refused
+		socks.SendConnectResponse(writer, 0x05)
 		return
 	}
 
@@ -88,9 +130,15 @@ func run_client () {
 	}
 
 	if len(flag.Args()) < 1 {
-		log.Fatal("args not enough")
+		panic("args not enough")
 	}
 	serveraddr = flag.Args()[0]
+
+	if blackfile != "" {
+		err := readlist()
+		if err != nil { panic(err.Error()) }
+	}
+	loaddns()
 
 	err = sutils.TcpServer(listenaddr, func (conn net.Conn) (err error) {
 		defer conn.Close()

@@ -12,13 +12,17 @@ build: $(TARGET)
 
 install:
 	install -d $(DESTDIR)/usr/bin/
-	install -s goproxy $(DESTDIR)/usr/bin/
+	install goproxy $(DESTDIR)/usr/bin/
 	install daemonized $(DESTDIR)/usr/bin/
+	install -d $(DESTDIR)/usr/share/goproxy/
+	install routes.list.gz $(DESTDIR)/usr/share/goproxy/
+	install -d $(DESTDIR)/etc/goproxy/
+	install resolv.conf $(DESTDIR)/etc/goproxy/
 
 clean:
 	rm -f $(TARGET)
 
-goproxy: goproxy.go server.go client.go
+goproxy: goproxy.go server.go client.go httproxy.go
 	go build -o $@ $^
 	strip $@
 	chmod 755 $@
@@ -32,6 +36,9 @@ tsrv: goproxy
 	./goproxy -loglevel=DEBUG -mode=server
 
 tcli: goproxy
-	./goproxy -loglevel=DEBUG -mode=client -listen :1080 localhost:5233
+	./goproxy -loglevel=DEBUG -black=routes.list.gz -mode=client -listen :1080 localhost:5233
+
+tpxy: goproxy
+	./goproxy -loglevel=DEBUG -black=routes.list.gz -mode=httproxy -listen :8080 localhost:5233
 
 ### Makefile ends here

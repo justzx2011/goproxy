@@ -8,7 +8,9 @@
 
 package dns
 
-import "net"
+import (
+	"net"
+)
 
 type DNSConfigError struct {
 	Err error
@@ -28,14 +30,15 @@ type dnsConfig struct {
 	timeout  int      // seconds before giving up on packet
 	attempts int      // lost packets before giving up on server
 	rotate   bool     // round robin among servers
+	blackips []net.IP // black answer ip list
 }
 
 // See resolv.conf(5) on a Linux machine.
 // TODO(rsc): Supposed to call uname() and chop the beginning
 // of the host name to get the default search domain.
 // We assume it's in resolv.conf anyway.
-func dnsReadConfig() (*dnsConfig, error) {
-	file, err := open("/etc/resolv.conf")
+func dnsReadConfig(configfile string) (*dnsConfig, error) {
+	file, err := open(configfile)
 	if err != nil {
 		return nil, &DNSConfigError{err}
 	}
@@ -46,6 +49,7 @@ func dnsReadConfig() (*dnsConfig, error) {
 	conf.timeout = 5
 	conf.attempts = 2
 	conf.rotate = false
+	conf.blackips = make([]net.IP, 0)
 	for line, ok := file.readLine(); ok; line, ok = file.readLine() {
 		f := getFields(line)
 		if len(f) < 1 {
@@ -111,9 +115,22 @@ func dnsReadConfig() (*dnsConfig, error) {
 					conf.rotate = true
 				}
 			}
+		case "blackip":
+			for _, s := range f[1:] {
+				conf.blackips = append(conf.blackips, net.ParseIP(s))
+			}
 		}
 	}
 	file.close()
 
 	return conf, nil
+}
+
+func (dc *dnsConfig) CheckBlack(records []dnsRR) (r bool) {
+	addrs := convertRR_A(records)
+	if len(addrs) == 0 { return true }
+	for _, a := range dc.blackips {
+		if a.Equal(addrs[0]) { return true }
+	}
+	return false
 }

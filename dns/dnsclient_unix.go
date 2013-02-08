@@ -18,7 +18,6 @@ package dns
 
 import (
 	"math/rand"
-	"sync"
 	"time"
 	"net"
 )
@@ -103,6 +102,9 @@ func tryOneName(cfg *dnsConfig, name string, qtype uint16) (cname string, addrs 
 		if err == nil || err.(*DNSError).Err == noSuchHost {
 			break
 		}
+		if cfg.CheckBlack(addrs) {
+			
+		}
 	}
 	return
 }
@@ -127,20 +129,15 @@ func convertRR_AAAA(records []dnsRR) []net.IP {
 }
 
 var cfg *dnsConfig
-var dnserr error
 
-func loadConfig() { cfg, dnserr = dnsReadConfig() }
-
-var onceLoadConfig sync.Once
+func LoadConfig(configfile string) (err error) {
+	cfg, err = dnsReadConfig(configfile)
+	return
+}
 
 func lookup(name string, qtype uint16) (cname string, addrs []dnsRR, err error) {
 	if !isDomainName(name) {
 		return name, nil, &DNSError{Err: "invalid domain name", Name: name}
-	}
-	onceLoadConfig.Do(loadConfig)
-	if dnserr != nil || cfg == nil {
-		err = dnserr
-		return
 	}
 	// If name is rooted (trailing dot) or has enough dots,
 	// try it by itself first.
@@ -197,11 +194,7 @@ func LookupIP(name string) (addrs []net.IP, err error) {
 			return
 		}
 	}
-	onceLoadConfig.Do(loadConfig)
-	if dnserr != nil || cfg == nil {
-		err = dnserr
-		return
-	}
+	// TODO: test dns poison
 	var records []dnsRR
 	var cname string
 	cname, records, err = lookup(name, dnsTypeA)

@@ -7,15 +7,13 @@ import (
 
 func ReadLines(r io.Reader, f func(string) (error)) (err error) {
 	var line string
-	var loop bool = true
 
 	reader := bufio.NewReader(r)
-	for loop {
-		line, _ = reader.ReadString('\n')
+	for {
+		line, err = reader.ReadString('\n')
 		switch err {
 		case io.EOF:
-			if len(line) == 0 { return }
-			loop = false
+			if len(line) == 0 { return nil }
 		case nil:
 		default: return
 		}
