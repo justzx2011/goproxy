@@ -87,10 +87,7 @@ func dial_conn(network, addr string) (c net.Conn, err error) {
 	hostname := addrs[0]
 	port, err := strconv.Atoi(addrs[1])
 	if err != nil { return }
-	connfunc, err := select_connfunc(hostname, uint16(port))
-	if err != nil { return }
-	c, err = connfunc(hostname, uint16(port))
-	return
+	return dail(hostname, uint16(port))
 }
 
 func run_httproxy() {

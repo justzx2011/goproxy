@@ -50,8 +50,8 @@ func readlist() (err error) {
 		if err != nil { return }
 	}
 	err = sutils.ReadLines(f, func (line string) (err error){
-		addrs := strings.Split(line, " ")
-		ipnet := net.IPNet{net.ParseIP(addrs[0]), net.IPMask(net.ParseIP(addrs[0]))}
+		addrs := strings.Split(strings.Trim(line, "\r\n "), " ")
+		ipnet := net.IPNet{IP: net.ParseIP(addrs[0]), Mask: net.IPMask(net.ParseIP(addrs[1]))}
 		blacklist = append(blacklist, ipnet)
 		return
 	})
@@ -62,13 +62,18 @@ func readlist() (err error) {
 
 func list_contain(ipnetlist []net.IPNet, ip net.IP) (bool) {
 	for _, ipnet := range ipnetlist {
-		if ipnet.Contains(ip) { return true }
+		if ipnet.Contains(ip) {
+			sutils.Debug(ipnet, "matches")
+			return true
+		}
 	}
 	return false
 }
 
-func select_connfunc(hostname string, port uint16) (connfunc func (string, uint16) (net.Conn, error), err error) {
-	if blacklist == nil { return connect_qsocks, nil }
+func dail(hostname string, port uint16) (c net.Conn, err error) {
+	if blacklist == nil {
+		return connect_direct(hostname, port)
+	}
 	addr := net.ParseIP(hostname)
 	if addr == nil {
 		var addrs []net.IP
@@ -79,9 +84,9 @@ func select_connfunc(hostname string, port uint16) (connfunc func (string, uint1
 	switch {
 	case list_contain(blacklist, addr):
 		sutils.Debug("ip", addr, "in black list.")
-		return connect_direct, nil
+		return connect_direct(hostname, port)
 	}
-	return connect_qsocks, nil
+	return connect_qsocks(hostname, port)
 }
 
 func socks_handler(conn net.Conn) (srcconn net.Conn, dstconn net.Conn, err error) {
@@ -110,13 +115,7 @@ func socks_handler(conn net.Conn) (srcconn net.Conn, dstconn net.Conn, err error
 	}
 	sutils.Debug("dst:", hostname, port)
 
-	connfunc, err := select_connfunc(hostname, port)
-	if err != nil {
-		// Address type not supported
-		socks.SendConnectResponse(writer, 0x08)
-		return nil, nil, errors.New("no conn function can be used")
-	}
-	dstconn, err = connfunc(hostname, port)
+	dstconn, err = dail(hostname, port)
 	if err != nil {
 		// Connection refused
 		socks.SendConnectResponse(writer, 0x05)

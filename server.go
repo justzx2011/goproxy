@@ -19,18 +19,18 @@ func qsocks_handler(conn net.Conn) (srcconn net.Conn, dstconn net.Conn, err erro
 		}
 	}
 
-	_, _, hostname, port, err := qsocks.RecvRequest(conn)
+	_, _, hostname, port, err := qsocks.RecvRequest(srcconn)
 	if err != nil { return }
 
 	// TODO: check username and password
-	// qsocks.SendResponse(conn, 0xff)
+	// qsocks.SendResponse(srcconn, 0xff)
 	sutils.Debug("qsocks auth passed")
 
 	sutils.Debug("try connect to", hostname, port)
 	dstconn, err = net.Dial("tcp", fmt.Sprintf("%s:%d", hostname, port))
 	if err != nil { return }
 
-	qsocks.SendResponse(conn, 0)
+	qsocks.SendResponse(srcconn, 0)
 	return
 }
 
