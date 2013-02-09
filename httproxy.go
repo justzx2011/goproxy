@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"io"
-	// "io/ioutil"
 	"net"
 	"net/http"
 	"strconv"
@@ -24,6 +23,15 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r.RequestURI = ""
+
+	delheaders := make([]string, 0)
+	for n, _ := range r.Header {
+		if strings.HasPrefix(n, "Proxy") {
+			delheaders = append(delheaders, n)
+		}
+	}
+	for _, n := range delheaders { r.Header.Del(n) }
+
 	resp, err := http_client.Do(r)
 	if err != nil {
 		sutils.Err(err)
@@ -88,6 +96,7 @@ func dial_conn(network, addr string) (c net.Conn, err error) {
 	port, err := strconv.Atoi(addrs[1])
 	if err != nil { return }
 	return dail(hostname, uint16(port))
+	// return net.Dial("tcp", addr)
 }
 
 func run_httproxy() {
