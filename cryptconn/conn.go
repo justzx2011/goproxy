@@ -8,7 +8,7 @@ import (
 	"../sutils"
 )
 
-const DEBUGOUTPUT bool = false
+const DEBUGOUTPUT bool = true
 
 type CryptConn struct {
 	*net.TCPConn
@@ -21,7 +21,7 @@ func (sc CryptConn) Read(b []byte) (n int, err error) {
 	if err != nil { return }
 	sc.in.XORKeyStream(b[:n], b[:n])
 	if DEBUGOUTPUT {
-		sutils.Debug("recv", hex.Dump(b[:n]))
+		sutils.Debug("recv\n", hex.Dump(b[:n]))
 	}
 	return 
 }
@@ -37,7 +37,7 @@ func (sc CryptConn) ReadFrom(r io.Reader) (n int64, err error) {
 
 func (sc CryptConn) Write(b []byte) (n int, err error) {
 	if DEBUGOUTPUT {
-		sutils.Debug("send", hex.Dump(b))
+		sutils.Debug("send\n", hex.Dump(b))
 	}
 	sc.out.XORKeyStream(b[:], b[:])
 	return sc.TCPConn.Write(b)

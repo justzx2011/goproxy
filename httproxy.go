@@ -10,7 +10,7 @@ import (
 	"./sutils"
 )
 
-var http_client http.Client
+var tspt http.Transport
 
 type Proxy struct {}
 
@@ -23,28 +23,20 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r.RequestURI = ""
+	r.Header.Del("Accept-Encoding")
+	r.Header.Del("Proxy-Connection")
+	r.Header.Del("Connection")
 
-	delheaders := make([]string, 0)
-	for n, _ := range r.Header {
-		if strings.HasPrefix(n, "Proxy") {
-			delheaders = append(delheaders, n)
-		}
-	}
-	for _, n := range delheaders { r.Header.Del(n) }
-
-	resp, err := http_client.Do(r)
+	resp, err := tspt.RoundTrip(r)
 	if err != nil {
 		sutils.Err(err)
 		return
 	}
 	defer resp.Body.Close()
-	for k, v := range resp.Header {
-		for _, vv := range v {
-			w.Header().Add(k, vv)
-		}
-	}
-	for _, c := range resp.Cookies() {
-		w.Header().Add("Set-Cookie", c.Raw)
+
+	resp.Header.Del("Content-Length")
+	for k, vv := range resp.Header {
+		for _, v := range vv { w.Header().Add(k, v) }
 	}
 	w.WriteHeader(resp.StatusCode)
 	_, err = io.Copy(w, resp.Body)
@@ -96,7 +88,6 @@ func dial_conn(network, addr string) (c net.Conn, err error) {
 	port, err := strconv.Atoi(addrs[1])
 	if err != nil { return }
 	return dail(hostname, uint16(port))
-	// return net.Dial("tcp", addr)
 }
 
 func run_httproxy() {
@@ -115,8 +106,6 @@ func run_httproxy() {
 	}
 	loaddns()
 
-	http_client = http.Client{Transport: &http.Transport{Dial: dial_conn}}
-
-	// http.HandleFunc("/", http_handler)
+	tspt = http.Transport{Dial: dial_conn}
 	http.ListenAndServe(listenaddr, &Proxy{})
 }
