@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"io"
 	"net"
 	"net/http"
 	"strconv"
@@ -39,7 +38,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		for _, v := range vv { w.Header().Add(k, v) }
 	}
 	w.WriteHeader(resp.StatusCode)
-	_, err = io.Copy(w, resp.Body)
+	_, err = coreCopy(w, resp.Body)
 	if err != nil {
 		sutils.Err(err)
 		return
@@ -73,12 +72,7 @@ func (p *Proxy) Connect(w http.ResponseWriter, r *http.Request) {
 	defer dstconn.Close()
 	srcconn.Write([]byte("HTTP/1.0 200 OK\r\n\r\n"))
 
-	go func () {
-		defer srcconn.Close()
-		defer dstconn.Close()
-		io.Copy(srcconn, dstconn)
-	}()
-	io.Copy(dstconn, srcconn)
+	copylink(srcconn, dstconn)
 	return
 }
 

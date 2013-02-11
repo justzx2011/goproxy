@@ -148,14 +148,8 @@ func run_client () {
 		defer conn.Close()
 		srcconn, dstconn, err := socks_handler(conn)
 		if err != nil { return }
-		defer dstconn.Close()
 
-		go func () {
-			defer srcconn.Close()
-			defer dstconn.Close()
-			io.Copy(srcconn, dstconn)
-		}()
-		io.Copy(dstconn, srcconn)
+		copylink(srcconn, dstconn)
 		return
 	})
 	if err != nil { sutils.Err(err) }

@@ -13,22 +13,26 @@ func fillString(b []byte, s string) (r []byte) {
 	return b[len(s)+1:]
 }
 
-func getString(b []byte) (r []byte, s string) {
-	c := uint8(b[0])
-	return b[1+c:], string(b[1:1+c])
+func getString(r io.Reader) (s string, err error) {
+	var size [1]byte
+	_, err = r.Read(size[:])
+	if err != nil { return }
+	buf := make([]byte, uint8(size[0]))
+	_, err = io.ReadFull(r, buf)
+	if err != nil { return }
+	return string(buf), nil
 }
+
 
 func SendRequest(conn net.Conn, username string, password string,
 	hostname string, port uint16) (err error) {
-	size := uint16(16 + 2 + 3 + len(username) + len(password) + len(hostname) + 2)
+	size := uint16(16 + 3 + len(username) + len(password) + len(hostname) + 2)
 	buf := make([]byte, size)
 
 	_, err = rand.Read(buf[:16])
 	if err != nil { return }
 	cur := buf[16:]
 
-	binary.BigEndian.PutUint16(cur, size)
-	cur = cur[2:]
 	cur = fillString(cur, username)
 	cur = fillString(cur, password)
 	cur = fillString(cur, hostname)
@@ -41,34 +45,37 @@ func SendRequest(conn net.Conn, username string, password string,
 
 func RecvRequest(conn net.Conn) (username string, password string,
 	hostname string, port uint16, err error) {
-	buf1 := make([]byte, 18)
-	_, err = io.ReadFull(conn, buf1)
-	if err != nil { return }
-	size := binary.BigEndian.Uint16(buf1[16:])
 
-	buf2 := make([]byte, size-18)
-	_, err = io.ReadFull(conn, buf2)
+	var buf1 [16]byte
+	_, err = io.ReadFull(conn, buf1[:])
 	if err != nil { return }
 
-	buf2, username = getString(buf2)
-	buf2, password = getString(buf2)
-	buf2, hostname = getString(buf2)
-	port = binary.BigEndian.Uint16(buf2)
+	username, err = getString(conn)
+	if err != nil { return }
+	password, err = getString(conn)
+	if err != nil { return }
+	hostname, err = getString(conn)
+	if err != nil { return }
+
+	var buf2 [2]byte
+	_, err = conn.Read(buf2[:])
+	if err != nil { return }
+	port = binary.BigEndian.Uint16(buf2[:])
 
 	return
 }
 
 func SendResponse(conn net.Conn, res uint8) (err error) {
-	buf := make([]byte, 1)
+	var buf [1]byte
 	buf[0] = byte(res)
-	_, err = conn.Write(buf)
+	_, err = conn.Write(buf[:])
 	if err != nil { return }
 	return
 }
 
 func RecvResponse(conn net.Conn) (res uint8, err error) {
-	buf := make([]byte, 1)
-	_, err = conn.Read(buf)
+	var buf [1]byte
+	_, err = conn.Read(buf[:])
 	if err != nil { return }
 	res = uint8(buf[0])
 	return

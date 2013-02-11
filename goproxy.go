@@ -11,6 +11,8 @@ import (
 var cipher string
 var keyfile string
 var listenaddr string
+var username string
+var password string
 var passfile string
 var blackfile string
 var runmode string
@@ -24,6 +26,8 @@ func init() {
 	flag.StringVar(&cipher, "cipher", "aes", "aes/des/tripledes/rc4")
 	flag.StringVar(&keyfile, "keyfile", "", "key and iv file")
 	flag.StringVar(&listenaddr, "listen", ":5233", "listen address")
+	flag.StringVar(&username, "username", "", "username for connect")
+	flag.StringVar(&password, "password", "", "password for connect")
 	flag.StringVar(&passfile, "passfile", "", "password file")
 	flag.StringVar(&blackfile, "black", "", "blacklist file")
 
