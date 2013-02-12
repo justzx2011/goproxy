@@ -8,8 +8,9 @@ import (
 	// "./sutils"
 )
 
-var blackfile string
 var listenaddr string
+var passfile string
+var blackfile string
 
 var cryptWrapper func (net.Conn) (net.Conn, error) = nil
 

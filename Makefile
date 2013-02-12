@@ -27,7 +27,7 @@ goproxy: goproxy.go server.go client.go httproxy.go
 	strip $@
 	chmod 755 $@
 
-glookup: glookup.go client.go
+glookup: glookup.go client.go server.go
 	go build -o $@ $^
 	strip $@
 	chmod 755 $@

@@ -20,7 +20,24 @@ import (
 	"math/rand"
 	"time"
 	"net"
+	"../sutils"
 )
+
+func check_black(msg *dnsMsg, name string, qtype uint16) (bool) {
+	server := "8.8.8.8"
+	cname, addrs, err := answer(name, server, msg, qtype)
+	if err != nil { return false }
+	if cname != name { return false }
+	if len(addrs) == 0 {
+		sutils.Debug("no such host recved")
+		return true
+	}
+	if cfg.CheckBlack(addrs) {
+		sutils.Debug("fake dns resolv hited.")
+		return true
+	}
+	return false
+}
 
 // Send a request on the connection and hope for a reply.
 // Up to cfg.attempts attempts.
@@ -51,6 +68,7 @@ func exchange(cfg *dnsConfig, c net.Conn, name string, qtype uint16) (*dnsMsg, e
 			c.SetReadDeadline(time.Now().Add(time.Duration(cfg.timeout) * time.Second))
 		}
 
+Reread:
 		buf := make([]byte, 2000) // More than enough.
 		n, err = c.Read(buf)
 		if err != nil {
@@ -64,6 +82,8 @@ func exchange(cfg *dnsConfig, c net.Conn, name string, qtype uint16) (*dnsMsg, e
 		if !in.Unpack(buf) || in.id != out.id {
 			continue
 		}
+
+		if check_black(in, name, qtype) { goto Reread }
 		return in, nil
 	}
 	var server string
@@ -99,11 +119,10 @@ func tryOneName(cfg *dnsConfig, name string, qtype uint16) (cname string, addrs 
 			continue
 		}
 		cname, addrs, err = answer(name, server, msg, qtype)
-		if err == nil || err.(*DNSError).Err == noSuchHost {
+		if err == nil { break }
+		if len(addrs) == 0 {
+			err = &DNSError{Err: noSuchHost, Name: name, Server: server}
 			break
-		}
-		if cfg.CheckBlack(addrs) {
-			
 		}
 	}
 	return
@@ -194,7 +213,7 @@ func LookupIP(name string) (addrs []net.IP, err error) {
 			return
 		}
 	}
-	// TODO: test dns poison
+
 	var records []dnsRR
 	var cname string
 	cname, records, err = lookup(name, dnsTypeA)

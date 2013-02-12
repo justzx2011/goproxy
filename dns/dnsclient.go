@@ -79,9 +79,6 @@ Cname:
 				}
 			}
 		}
-		if len(addrs) == 0 {
-			return "", nil, &DNSError{Err: noSuchHost, Name: name, Server: server}
-		}
 		return name, addrs, nil
 	}
 
