@@ -1,3 +1,9 @@
+goproxy (1.7) unstable; urgency=low
+
+  * Use DNS over goproxy, not udp drop.
+
+ -- shell <shell@deb64.lan>  Wed, 13 Feb 2013 17:41:09 +0800
+
 goproxy (1.6) unstable; urgency=low
 
   * New protocol.

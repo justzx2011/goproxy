@@ -33,12 +33,12 @@ glookup: glookup.go client.go server.go
 	chmod 755 $@
 
 tsrv: goproxy
-	./goproxy -loglevel=DEBUG -mode=server
+	./goproxy -loglevel=DEBUG -mode=server -passfile=users.pwd
 
-tcli: goproxy
-	./goproxy -loglevel=DEBUG -black=routes.list.gz -mode=client -listen :1080 localhost:5233
+# tcli: goproxy
+# 	./goproxy -loglevel=DEBUG -black=routes.list.gz -mode=client -listen :1080 localhost:5233
 
 tpxy: goproxy
-	./goproxy -loglevel=DEBUG -black=routes.list.gz -mode=httproxy -listen :8080 localhost:5233
+	./goproxy -loglevel=DEBUG -black=routes.list.gz -mode=httproxy -listen :8118 -username=shell -password=123 localhost:5233
 
 ### Makefile ends here

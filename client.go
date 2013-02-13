@@ -27,8 +27,16 @@ func connect_qsocks(hostname string, port uint16) (conn net.Conn, err error) {
 		if err != nil { return }
 	}
 
-	err = qsocks.SendRequest(conn, "", "", hostname, port)
+	bufAuth, err := qsocks.Auth(username, password)
 	if err != nil { return }
+	_, err = conn.Write(bufAuth)
+	if err != nil { return }
+
+	bufConn, err := qsocks.Conn(hostname, port)
+	if err != nil { return }
+	_, err = conn.Write(bufConn)
+	if err != nil { return }
+
 	res, err := qsocks.RecvResponse(conn)
 	if err != nil { return }
 	if res != 0 { return nil, fmt.Errorf("qsocks response %d", res) }
@@ -77,6 +85,7 @@ func dail(hostname string, port uint16) (c net.Conn, err error) {
 	addr := net.ParseIP(hostname)
 	if addr == nil {
 		var addrs []net.IP
+		// TODO: lookup?
 		addrs, err = dns.LookupIP(hostname)
 		if err != nil { return }
 		addr = addrs[0]

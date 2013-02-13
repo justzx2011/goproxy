@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -64,31 +63,64 @@ func load_passfile(filename string) (err error) {
 	return
 }
 
-func qsocks_handler(conn net.Conn) (srcconn net.Conn, dstconn net.Conn, err error) {
+func qsocks_handler(conn net.Conn) (err error) {
 	sutils.Debug("connection comein")
-	srcconn = conn
 	if cryptWrapper != nil {
-		srcconn, err = cryptWrapper(conn)
+		conn, err = cryptWrapper(conn)
 		if err != nil { return }
 	}
 
-	username, password, hostname, port, err := qsocks.RecvRequest(srcconn)
+	username, password, err = qsocks.GetAuth(conn)
 	if err != nil { return }
 
 	if userpass != nil {
 		password1, ok := userpass[username]
-		if ok && (password == password1) {
-			qsocks.SendResponse(srcconn, 0x01)
-			return nil, nil, errors.New("failed with auth")
+		if !ok || (password != password1) {
+			qsocks.SendResponse(conn, 0x01)
+			return fmt.Errorf("failed with auth: %s:%s", username, password)
 		}
 	}
 	sutils.Debug("qsocks auth passed")
 
-	sutils.Debug("try connect to", hostname, port)
-	dstconn, err = net.Dial("tcp", fmt.Sprintf("%s:%d", hostname, port))
+	req, err := qsocks.GetReq(conn)
 	if err != nil { return }
+	switch req {
+	case qsocks.REQ_CONN:
+		var hostname string
+		var port uint16
+		hostname, port, err = qsocks.GetConn(conn)
+		if err != nil { return }
+		sutils.Debug("try connect to", hostname, port)
+		var dstconn net.Conn
+		dstconn, err = net.Dial("tcp", fmt.Sprintf("%s:%d", hostname, port))
+		if err != nil { return }
+		qsocks.SendResponse(conn, 0)
+		copylink(conn, dstconn)
+		return
+	case qsocks.REQ_DNS:
+		// for {
+		// 	name, err := qsocks.getDNS(conn)
+		// 	if err == io.EOF {
+		// 		break
+		// 	}
+		// 	if err != nil { continue }
 
-	qsocks.SendResponse(srcconn, 0)
+		// 	addrs, err := net.LookupIP(name)
+		// 	if err != nil {
+		// 		addrs = nil
+		// 	}
+
+		// 	buf, err := Answer(addrs)
+		// 	if err != nil {
+		// 		continue
+		// 	}
+		// 	_, err = conn.Write(buf)
+		// 	if err != nil {
+		// 		continue
+		// 	}
+		// }
+		// return
+	}
 	return
 }
 
@@ -102,13 +134,8 @@ func run_server () {
 		
 	err = sutils.TcpServer(listenaddr, func (conn net.Conn) (err error) {
 		defer conn.Close()
-		srcconn, dstconn, err := qsocks_handler(conn)
-		if err != nil {
-			sutils.Err(err)
-			return nil
-		}
-
-		copylink(srcconn, dstconn)
+		err = qsocks_handler(conn)
+		if err != nil { sutils.Err(err) }
 		return nil
 	})
 	if err != nil { sutils.Err(err) }

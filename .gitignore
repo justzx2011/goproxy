@@ -25,3 +25,4 @@ goproxy
 *.key
 *.log
 *.pyc
+*.pwd
