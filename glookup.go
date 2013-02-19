@@ -9,25 +9,21 @@ import (
 )
 
 var listenaddr string
+var username string
+var password string
 var passfile string
 var blackfile string
 
 var cryptWrapper func (net.Conn) (net.Conn, error) = nil
 
-func loaddns() {
-}
-
 func main() {
-	var err error
-	flag.Parse()
-	err = dns.LoadConfig("resolv.conf")
-	if err != nil { panic(err.Error()) }
 	blackfile = "routes.list.gz"
-	readlist()
+	init_dail()
 
+	flag.Parse()
 	addrs, _ := dns.LookupIP(flag.Arg(0))
 	fmt.Println(flag.Arg(0))
 	for _, addr := range addrs {
-		fmt.Printf("\t%s\t%t\n", addr, list_contain(blacklist, addr))
+		fmt.Printf("\t%s\t%t\n", addr, blacklist.Contain(addr))
 	}
 }

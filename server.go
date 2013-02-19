@@ -99,7 +99,7 @@ func qsocks_handler(conn net.Conn) (err error) {
 		return
 	case qsocks.REQ_DNS:
 		// for {
-		// 	name, err := qsocks.getDNS(conn)
+		// 	name, err := qsocks.GetDNS(conn)
 		// 	if err == io.EOF {
 		// 		break
 		// 	}
@@ -119,7 +119,7 @@ func qsocks_handler(conn net.Conn) (err error) {
 		// 		continue
 		// 	}
 		// }
-		// return
+		return
 	}
 	return
 }

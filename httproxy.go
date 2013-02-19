@@ -94,11 +94,7 @@ func run_httproxy() {
 	}
 	serveraddr = flag.Args()[0]
 
-	if blackfile != "" {
-		err := readlist()
-		if err != nil { panic(err.Error()) }
-	}
-	loaddns()
+	init_dail()
 
 	tspt = http.Transport{Dial: dial_conn}
 	http.ListenAndServe(listenaddr, &Proxy{})

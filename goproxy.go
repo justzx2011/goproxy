@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"net"
-	"./dns"
 	"./sutils"
 	"./cryptconn"
 )
@@ -45,14 +44,6 @@ func init() {
 
 var cryptWrapper func (net.Conn) (net.Conn, error) = nil
 
-func loaddns() {
-	err := dns.LoadConfig("resolv.conf")
-	if err == nil { return }
-	err = dns.LoadConfig("/etc/goproxy/resolv.conf")
-	if err != nil { panic(err.Error()) }
-	return
-}
-
 func main() {
 	var err error
 
@@ -73,7 +64,6 @@ func main() {
 		run_client()
 	case "httproxy":
 		sutils.Info("httproxy mode")
-		loaddns()
 		run_httproxy()
 	}
 }

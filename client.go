@@ -4,99 +4,10 @@ import (
 	"bufio"
 	"errors"
 	"flag"
-	"fmt"
-	"compress/gzip"
-	"io"
 	"net"
-	"os"
-	"strings"
-	"./dns"
-	"./qsocks"
 	"./socks"
 	"./sutils"
 )
-
-var serveraddr string
-
-func connect_qsocks(hostname string, port uint16) (conn net.Conn, err error) {
-	conn, err = net.Dial("tcp", serveraddr)
-	if err != nil { return }
-
-	if cryptWrapper != nil {
-		conn, err = cryptWrapper(conn)
-		if err != nil { return }
-	}
-
-	bufAuth, err := qsocks.Auth(username, password)
-	if err != nil { return }
-	_, err = conn.Write(bufAuth)
-	if err != nil { return }
-
-	bufConn, err := qsocks.Conn(hostname, port)
-	if err != nil { return }
-	_, err = conn.Write(bufConn)
-	if err != nil { return }
-
-	res, err := qsocks.RecvResponse(conn)
-	if err != nil { return }
-	if res != 0 { return nil, fmt.Errorf("qsocks response %d", res) }
-	return
-}
-
-func connect_direct(hostname string, port uint16) (conn net.Conn, err error) {
-	return net.Dial("tcp", fmt.Sprintf("%s:%d", hostname, port))
-}
-
-var blacklist []net.IPNet
-
-func readlist() (err error) {
-	var f io.Reader
-	f, err = os.Open(blackfile)
-	if err != nil { return }
-	if strings.HasSuffix(blackfile, ".gz") {
-		f, err = gzip.NewReader(f)
-		if err != nil { return }
-	}
-	err = sutils.ReadLines(f, func (line string) (err error){
-		addrs := strings.Split(strings.Trim(line, "\r\n "), " ")
-		ipnet := net.IPNet{IP: net.ParseIP(addrs[0]), Mask: net.IPMask(net.ParseIP(addrs[1]))}
-		blacklist = append(blacklist, ipnet)
-		return
-	})
-	if err != nil { return }
-	sutils.Info("blacklist loaded,", len(blacklist), "record(s).")
-	return
-}
-
-func list_contain(ipnetlist []net.IPNet, ip net.IP) (bool) {
-	for _, ipnet := range ipnetlist {
-		if ipnet.Contains(ip) {
-			sutils.Debug(ipnet, "matches")
-			return true
-		}
-	}
-	return false
-}
-
-func dail(hostname string, port uint16) (c net.Conn, err error) {
-	if blacklist == nil {
-		return connect_direct(hostname, port)
-	}
-	addr := net.ParseIP(hostname)
-	if addr == nil {
-		var addrs []net.IP
-		// TODO: lookup?
-		addrs, err = dns.LookupIP(hostname)
-		if err != nil { return }
-		addr = addrs[0]
-	}
-	switch {
-	case list_contain(blacklist, addr):
-		sutils.Debug("ip", addr, "in black list.")
-		return connect_direct(hostname, port)
-	}
-	return connect_qsocks(hostname, port)
-}
 
 func socks_handler(conn net.Conn) (srcconn net.Conn, dstconn net.Conn, err error) {
 	sutils.Debug("connection comein")
@@ -147,11 +58,7 @@ func run_client () {
 	}
 	serveraddr = flag.Args()[0]
 
-	if blackfile != "" {
-		err := readlist()
-		if err != nil { panic(err.Error()) }
-	}
-	loaddns()
+	init_dail()
 
 	err = sutils.TcpServer(listenaddr, func (conn net.Conn) (err error) {
 		defer conn.Close()

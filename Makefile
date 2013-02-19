@@ -22,12 +22,12 @@ install:
 clean:
 	rm -f $(TARGET)
 
-goproxy: goproxy.go server.go client.go httproxy.go
+goproxy: goproxy.go server.go client.go httproxy.go dail.go
 	go build -o $@ $^
 	strip $@
 	chmod 755 $@
 
-glookup: glookup.go client.go server.go
+glookup: glookup.go dail.go
 	go build -o $@ $^
 	strip $@
 	chmod 755 $@

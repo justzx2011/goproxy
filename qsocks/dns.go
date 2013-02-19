@@ -11,7 +11,7 @@ package qsocks
 // 	return
 // }
 
-// func getDNS(conn net.Conn) (hostname string, err error) {
+// func GetDNS(conn net.Conn) (hostname string, err error) {
 // 	return getString(conn)
 // }
 

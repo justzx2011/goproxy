@@ -24,6 +24,7 @@ import (
 )
 
 func check_black(msg *dnsMsg, name string, qtype uint16) (bool) {
+	if qtype != dnsTypeA { return false }
 	server := "8.8.8.8"
 	cname, addrs, err := answer(name, server, msg, qtype)
 	if err != nil { return false }
