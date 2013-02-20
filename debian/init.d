@@ -2,7 +2,7 @@
 ### BEGIN INIT INFO
 # Provides:          goproxy
 # Required-Start:    $network $local_fs $remote_fs
-# Required-Stop:
+# Required-Stop:     $remote_fs
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
 # Short-Description: socksv5 based proxy written by go.

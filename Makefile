@@ -15,9 +15,9 @@ install:
 	install goproxy $(DESTDIR)/usr/bin/
 	install daemonized $(DESTDIR)/usr/bin/
 	install -d $(DESTDIR)/usr/share/goproxy/
-	install routes.list.gz $(DESTDIR)/usr/share/goproxy/
+	install -m 644 routes.list.gz $(DESTDIR)/usr/share/goproxy/
 	install -d $(DESTDIR)/etc/goproxy/
-	install resolv.conf $(DESTDIR)/etc/goproxy/
+	install -m 644 resolv.conf $(DESTDIR)/etc/goproxy/
 
 clean:
 	rm -f $(TARGET)
