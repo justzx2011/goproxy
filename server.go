@@ -1,50 +1,14 @@
 package main
 
 import (
+	"errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"strings"
 	"./qsocks"
 	"./sutils"
 )
-
-func coreCopy(dst io.Writer, src io.Reader) (written int64, err error) {
-	buf := make([]byte, 1024)
-	for {
-		nr, er := src.Read(buf)
-		if nr > 0 {
-			nw, ew := dst.Write(buf[0:nr])
-			if nw > 0 { written += int64(nw) }
-			if ew != nil {
-				err = ew
-				break
-			}
-			if nr != nw {
-				err = io.ErrShortWrite
-				break
-			}
-		}
-		if er == io.EOF { break }
-		if er != nil {
-			err = er
-			break
-		}
-	}
-	return written, err
-}
-
-func copylink(src, dst io.ReadWriteCloser) {
-	defer src.Close()
-	defer dst.Close()
-	go func () {
-		defer src.Close()
-		defer dst.Close()
-		io.Copy(src, dst)
-	}()
-	io.Copy(dst, src)
-}
 
 var userpass map[string]string
 
@@ -95,7 +59,7 @@ func qsocks_handler(conn net.Conn) (err error) {
 		dstconn, err = net.Dial("tcp", fmt.Sprintf("%s:%d", hostname, port))
 		if err != nil { return }
 		qsocks.SendResponse(conn, 0)
-		copylink(conn, dstconn)
+		sutils.CopyLink(conn, dstconn)
 		return
 	case qsocks.REQ_DNS:
 		qsocks.SendResponse(conn, 0xff)

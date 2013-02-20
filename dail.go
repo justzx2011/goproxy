@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"time"
 	"./dns"
 	"./qsocks"
 	"./sutils"
@@ -42,24 +43,46 @@ func (iplist IPList)Contain(ip net.IP) (bool) {
 	return false
 }
 
-var dnscache map[string]net.IP
-
-func init() {
-	dnscache = make(map[string]net.IP, 0)
+type IPEntry struct {
+	t time.Time
+	ip net.IP
 }
 
-func cached_lookup(hostname string) (result net.IP, err error) {
-	result, ok := dnscache[hostname]
-	if ok { return }
+type DNSCache map[string]*IPEntry
 
-	// TODO: lookup?
+func (dc DNSCache) free() {
+	var dellist []string
+	n := time.Now()
+	for k, v := range dc {
+		if n.Sub(v.t).Seconds() > 300 {
+			dellist = append(dellist, k)
+		}
+	}
+	for _, k := range dellist { delete(dc, k) }
+	return
+}
+
+func (dc DNSCache) Lookup(hostname string) (ip net.IP, err error) {
+	ipe, ok := dc[hostname]
+	if ok {
+		sutils.Debug("hostname", hostname, "cached")
+		return ipe.ip, nil
+	}
+
 	addrs, err := dns.LookupIP(hostname)
 	if err != nil { return }
 
-	result = addrs[0]
-	dnscache[hostname] = result
-	return
+	ip = addrs[0]
+	ipe = new(IPEntry)
+	ipe.ip = addrs[0]
+	ipe.t = time.Now()
+
+	if len(dc) > 256 { dc.free() }
+	dnscache[hostname] = ipe
+	return 
 }
+
+var dnscache DNSCache = make(DNSCache, 0)
 
 var blacklist IPList
 
@@ -116,7 +139,8 @@ func dail(hostname string, port uint16) (c net.Conn, err error) {
 	}
 	addr = net.ParseIP(hostname)
 	if addr == nil {
-		addr, err = cached_lookup(hostname)
+		addr, err = dnscache.Lookup(hostname)
+		// addr, err = cached_lookup(hostname)
 		if err != nil { return }
 	}
 	switch {

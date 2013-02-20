@@ -8,7 +8,7 @@ import (
 	"../sutils"
 )
 
-const DEBUGOUTPUT bool = true
+const DEBUGOUTPUT bool = false
 
 type CryptConn struct {
 	*net.TCPConn
@@ -32,7 +32,7 @@ type writerOnly struct {
 
 func (sc CryptConn) ReadFrom(r io.Reader) (n int64, err error) {
 	sutils.Debug("cryptconn readfrom call")
-	return io.Copy(writerOnly{sc}, r)
+	return sutils.CoreCopy(writerOnly{sc}, r)
 }
 
 func (sc CryptConn) Write(b []byte) (n int, err error) {
