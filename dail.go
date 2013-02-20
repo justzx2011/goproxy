@@ -59,6 +59,7 @@ func (dc DNSCache) free() {
 		}
 	}
 	for _, k := range dellist { delete(dc, k) }
+	sutils.Info(len(dellist), "dnscache records deleted.")
 	return
 }
 
