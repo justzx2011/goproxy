@@ -98,28 +98,8 @@ func qsocks_handler(conn net.Conn) (err error) {
 		copylink(conn, dstconn)
 		return
 	case qsocks.REQ_DNS:
-		// for {
-		// 	name, err := qsocks.GetDNS(conn)
-		// 	if err == io.EOF {
-		// 		break
-		// 	}
-		// 	if err != nil { continue }
-
-		// 	addrs, err := net.LookupIP(name)
-		// 	if err != nil {
-		// 		addrs = nil
-		// 	}
-
-		// 	buf, err := Answer(addrs)
-		// 	if err != nil {
-		// 		continue
-		// 	}
-		// 	_, err = conn.Write(buf)
-		// 	if err != nil {
-		// 		continue
-		// 	}
-		// }
-		return
+		qsocks.SendResponse(conn, 0xff)
+		return errors.New("require DNS not support yet")
 	}
 	return
 }
