@@ -6,4 +6,8 @@ RUNDAEMON=0
 LOGFILE="/var/log/$NAME.log"
 
 # Additional options that are passed to the Daemon.
+# server options like this
+# DAEMON_OPTS="-mode server -keyfile=/etc/goproxy/key -passfile=/etc/goproxy/users.pwd"
+# client options like this
+# DAEMON_OPTS="-mode client -keyfile=/etc/goproxy/key -black=/usr/share/goproxy/routes.list.gz -username=usr -password=pwd srv:5233
 DAEMON_OPTS=""
