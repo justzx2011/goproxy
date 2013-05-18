@@ -19,7 +19,7 @@ install: build
 	install daemonized $(DESTDIR)/usr/bin/
 	install -d $(DESTDIR)/usr/share/goproxy/
 	install -m 644 routes.list.gz $(DESTDIR)/usr/share/goproxy/
-	intstll -m 644 README.html $(DESTDIR)/usr/share/goproxy/
+	install -m 644 README.html $(DESTDIR)/usr/share/goproxy/
 	install -d $(DESTDIR)/etc/goproxy/
 	install -m 644 resolv.conf $(DESTDIR)/etc/goproxy/
 
