@@ -11,7 +11,7 @@ import (
 
 var userpass map[string]string
 
-func load_passfile(filename string) (err error) {
+func LoadPassfile(filename string) (err error) {
 	userpass = make(map[string]string, 0)
 	file, err := os.Open(filename)
 	if err != nil { return }
@@ -26,14 +26,14 @@ func load_passfile(filename string) (err error) {
 	return
 }
 
-func qsocks_handler(conn net.Conn) (err error) {
+func QsocksHandler(conn net.Conn) (err error) {
 	sutils.Debug("connection comein")
 	if cryptWrapper != nil {
 		conn, err = cryptWrapper(conn)
 		if err != nil { return }
 	}
 
-	username, password, err = GetAuth(conn)
+	username, password, err := GetAuth(conn)
 	if err != nil { return }
 
 	if userpass != nil {
@@ -65,21 +65,4 @@ func qsocks_handler(conn net.Conn) (err error) {
 		return errors.New("require DNS not support yet")
 	}
 	return
-}
-
-func run_server () {
-	var err error
-
-	if passfile != "" {
-		err = load_passfile(passfile)
-		if err != nil { panic(err.Error()) }
-	}
-		
-	err = sutils.TcpServer(listenaddr, func (conn net.Conn) (err error) {
-		defer conn.Close()
-		err = qsocks_handler(conn)
-		if err != nil { sutils.Err(err) }
-		return nil
-	})
-	if err != nil { sutils.Err(err) }
 }

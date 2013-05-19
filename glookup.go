@@ -3,24 +3,25 @@ package main
 import (
 	"fmt"
 	"flag"
-	"net"
 	"./dns"
-	// "./sutils"
+	"./src"
+	"./sutils"
 )
 
-var listenaddr string
-var username string
-var password string
-var passfile string
-var blackfile string
-
-var cryptWrapper func (net.Conn) (net.Conn, error) = nil
-
 func main() {
-	blackfile = "routes.list.gz"
-	init_dail()
-
 	flag.Parse()
+
+	blacklist, err := src.ReadIPList("routes.list.gz")
+	if err != nil {
+		sutils.Err(err)
+		return
+	}
+	err = dns.LoadConfig("resolv.conf")
+	if err != nil {
+		sutils.Err(err)
+		return
+	}
+
 	addrs, _ := dns.LookupIP(flag.Arg(0))
 	fmt.Println(flag.Arg(0))
 	for _, addr := range addrs {

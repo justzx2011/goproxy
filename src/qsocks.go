@@ -108,3 +108,29 @@ func RecvResponse(conn net.Conn) (res uint8, err error) {
 	res = uint8(buf[0])
 	return
 }
+
+func connect_qsocks(serveraddr string, username string, password string,
+	hostname string, port uint16) (conn net.Conn, err error) {
+	conn, err = net.Dial("tcp", serveraddr)
+	if err != nil { return }
+
+	if cryptWrapper != nil {
+		conn, err = cryptWrapper(conn)
+		if err != nil { return }
+	}
+
+	bufAuth, err := Auth(username, password)
+	if err != nil { return }
+	_, err = conn.Write(bufAuth)
+	if err != nil { return }
+
+	bufConn, err := Conn(hostname, port)
+	if err != nil { return }
+	_, err = conn.Write(bufConn)
+	if err != nil { return }
+
+	res, err := RecvResponse(conn)
+	if err != nil { return }
+	if res != 0 { return nil, fmt.Errorf("qsocks response %d", res) }
+	return
+}

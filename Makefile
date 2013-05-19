@@ -26,11 +26,11 @@ install: build
 clean:
 	rm -f $(TARGET)
 
-goproxy: goproxy.go server.go client.go dail.go
+goproxy: goproxy.go
 	go build -o $@ $^
 	chmod 755 $@
 
-glookup: glookup.go dail.go
+glookup: glookup.go
 	go build -o $@ $^
 	chmod 755 $@
 

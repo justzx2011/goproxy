@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"strconv"
 	"time"
 	"../dns"
 	"../sutils"
@@ -15,13 +16,16 @@ import (
 type IPList []net.IPNet
 
 func ReadIPList(filename string) (iplist IPList, err error) {
-	var f io.Reader
+	var f io.ReadCloser
 	f, err = os.Open(filename)
 	if err != nil { return }
+	defer f.Close()
+
 	if strings.HasSuffix(filename, ".gz") {
 		f, err = gzip.NewReader(f)
 		if err != nil { return }
 	}
+
 	err = sutils.ReadLines(f, func (line string) (err error){
 		addrs := strings.Split(strings.Trim(line, "\r\n "), " ")
 		ipnet := net.IPNet{IP: net.ParseIP(addrs[0]), Mask: net.IPMask(net.ParseIP(addrs[1]))}
@@ -85,8 +89,14 @@ func (dc DNSCache) Lookup(hostname string) (ip net.IP, err error) {
 var dnscache DNSCache = make(DNSCache, 0)
 
 var blacklist IPList
+var serveraddr string
+var cryptWrapper func (net.Conn) (net.Conn, error) = nil
+var username string
+var password string
 
-func init_dail() {
+func InitDail(blackfile string, serveraddr_ string,
+	cryptWrapper_ func (net.Conn) (net.Conn, error),
+	username_ string, password_ string) {
 	if blackfile != "" {
 		var err error
 		blacklist, err = ReadIPList(blackfile)
@@ -94,59 +104,35 @@ func init_dail() {
 		if err != nil { panic(err.Error()) }
 	}
 
-	err := dns.LoadConfig("resolv.conf")
-	if err == nil { return }
-	err = dns.LoadConfig("/etc/goproxy/resolv.conf")
-	if err != nil { panic(err.Error()) }
+	serveraddr = serveraddr_
+	cryptWrapper = cryptWrapper_
+	username = username_
+	password = password_
 	return
 }
 
-var serveraddr string
-
-func connect_qsocks(hostname string, port uint16) (conn net.Conn, err error) {
-	conn, err = net.Dial("tcp", serveraddr)
-	if err != nil { return }
-
-	if cryptWrapper != nil {
-		conn, err = cryptWrapper(conn)
-		if err != nil { return }
-	}
-
-	bufAuth, err := Auth(username, password)
-	if err != nil { return }
-	_, err = conn.Write(bufAuth)
-	if err != nil { return }
-
-	bufConn, err := Conn(hostname, port)
-	if err != nil { return }
-	_, err = conn.Write(bufConn)
-	if err != nil { return }
-
-	res, err := RecvResponse(conn)
-	if err != nil { return }
-	if res != 0 { return nil, fmt.Errorf("qsocks response %d", res) }
-	return
-}
-
-func connect_direct(hostname string, port uint16) (conn net.Conn, err error) {
-	return net.Dial("tcp", fmt.Sprintf("%s:%d", hostname, port))
-}
-
-func dail(hostname string, port uint16) (c net.Conn, err error) {
+func Dail(hostname string, port uint16) (c net.Conn, err error) {
 	var addr net.IP
 	if blacklist == nil {
-		return connect_direct(hostname, port)
+		return net.Dial("tcp", fmt.Sprintf("%s:%d", hostname, port))
 	}
 	addr = net.ParseIP(hostname)
 	if addr == nil {
 		addr, err = dnscache.Lookup(hostname)
-		// addr, err = cached_lookup(hostname)
 		if err != nil { return }
 	}
 	switch {
 	case blacklist.Contain(addr):
 		sutils.Debug("ip", addr, "in black list.")
-		return connect_direct(hostname, port)
+		return net.Dial("tcp", fmt.Sprintf("%s:%d", hostname, port))
 	}
-	return connect_qsocks(hostname, port)
+	return connect_qsocks(serveraddr, username, password, hostname, port)
+}
+
+func DialConn(network, addr string) (c net.Conn, err error) {
+	addrs := strings.Split(addr, ":")
+	hostname := addrs[0]
+	port, err := strconv.Atoi(addrs[1])
+	if err != nil { return }
+	return Dail(hostname, uint16(port))
 }
