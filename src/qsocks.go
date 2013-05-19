@@ -1,4 +1,4 @@
-package qsocks
+package src
 
 import (
 	"crypto/rand"

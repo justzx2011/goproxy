@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"net"
+	"./src"
 	"./sutils"
 	"./cryptconn"
 )
@@ -58,12 +59,12 @@ func main() {
 	switch runmode {
 	case "server":
 		sutils.Info("server mode")
-		run_server()
+		src.run_server()
 	case "client":
 		sutils.Info("client mode")
-		run_client()
+		src.run_client()
 	case "httproxy":
 		sutils.Info("httproxy mode")
-		run_httproxy()
+		src.run_httproxy()
 	}
 }

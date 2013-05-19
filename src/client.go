@@ -1,4 +1,4 @@
-package main
+package src
 
 import (
 	"bufio"
@@ -8,8 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"./socks"
-	"./sutils"
+	"../sutils"
 )
 
 func socks_handler(conn net.Conn) (srcconn net.Conn, dstconn net.Conn, err error) {
@@ -19,21 +18,21 @@ func socks_handler(conn net.Conn) (srcconn net.Conn, dstconn net.Conn, err error
 	reader := bufio.NewReader(conn)
 	writer := bufio.NewWriter(conn)
 
-	methods, err := socks.GetHandshake(reader)
+	methods, err := GetHandshake(reader)
 	if err != nil { return }
 
 	var method byte = 0xff
 	for _, m := range methods {
 		if m == 0 { method = 0 }
 	}
-	socks.SendHandshakeResponse(writer, method)
+	SendHandshakeResponse(writer, method)
 	if method == 0xff { return nil, nil, errors.New("auth method wrong") }
 	sutils.Debug("handshark ok")
 
-	hostname, port, err := socks.GetConnect(reader)
+	hostname, port, err := GetConnect(reader)
 	if err != nil {
 		// general SOCKS server failure
-		socks.SendConnectResponse(writer, 0x01)
+		SendConnectResponse(writer, 0x01)
 		return
 	}
 	sutils.Debug("dst:", hostname, port)
@@ -41,15 +40,15 @@ func socks_handler(conn net.Conn) (srcconn net.Conn, dstconn net.Conn, err error
 	dstconn, err = dail(hostname, port)
 	if err != nil {
 		// Connection refused
-		socks.SendConnectResponse(writer, 0x05)
+		SendConnectResponse(writer, 0x05)
 		return
 	}
 
-	socks.SendConnectResponse(writer, 0x00)
+	SendConnectResponse(writer, 0x00)
 	return
 }
 
-func run_client () {
+func RunClient () {
 	var err error
 
 	if cryptWrapper == nil {
@@ -149,7 +148,7 @@ func dial_conn(network, addr string) (c net.Conn, err error) {
 	return dail(hostname, uint16(port))
 }
 
-func run_httproxy() {
+func RunHttproxy() {
 	if cryptWrapper == nil {
 		sutils.Warning("client mode without keyfile")
 	}

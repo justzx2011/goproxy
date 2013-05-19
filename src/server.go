@@ -1,4 +1,4 @@
-package main
+package src
 
 import (
 	"errors"
@@ -6,8 +6,7 @@ import (
 	"net"
 	"os"
 	"strings"
-	"./qsocks"
-	"./sutils"
+	"../sutils"
 )
 
 var userpass map[string]string
@@ -34,35 +33,35 @@ func qsocks_handler(conn net.Conn) (err error) {
 		if err != nil { return }
 	}
 
-	username, password, err = qsocks.GetAuth(conn)
+	username, password, err = GetAuth(conn)
 	if err != nil { return }
 
 	if userpass != nil {
 		password1, ok := userpass[username]
 		if !ok || (password != password1) {
-			qsocks.SendResponse(conn, 0x01)
+			SendResponse(conn, 0x01)
 			return fmt.Errorf("failed with auth: %s:%s", username, password)
 		}
 	}
 	sutils.Debug("qsocks auth passed")
 
-	req, err := qsocks.GetReq(conn)
+	req, err := GetReq(conn)
 	if err != nil { return }
 	switch req {
-	case qsocks.REQ_CONN:
+	case REQ_CONN:
 		var hostname string
 		var port uint16
-		hostname, port, err = qsocks.GetConn(conn)
+		hostname, port, err = GetConn(conn)
 		if err != nil { return }
 		sutils.Debug("try connect to", hostname, port)
 		var dstconn net.Conn
 		dstconn, err = net.Dial("tcp", fmt.Sprintf("%s:%d", hostname, port))
 		if err != nil { return }
-		qsocks.SendResponse(conn, 0)
+		SendResponse(conn, 0)
 		sutils.CopyLink(conn, dstconn)
 		return
-	case qsocks.REQ_DNS:
-		qsocks.SendResponse(conn, 0xff)
+	case REQ_DNS:
+		SendResponse(conn, 0xff)
 		return errors.New("require DNS not support yet")
 	}
 	return

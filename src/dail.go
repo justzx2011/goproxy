@@ -1,4 +1,4 @@
-package main
+package src
 
 import (
 	"fmt"
@@ -8,9 +8,8 @@ import (
 	"os"
 	"strings"
 	"time"
-	"./dns"
-	"./qsocks"
-	"./sutils"
+	"../dns"
+	"../sutils"
 )
 
 type IPList []net.IPNet
@@ -113,17 +112,17 @@ func connect_qsocks(hostname string, port uint16) (conn net.Conn, err error) {
 		if err != nil { return }
 	}
 
-	bufAuth, err := qsocks.Auth(username, password)
+	bufAuth, err := Auth(username, password)
 	if err != nil { return }
 	_, err = conn.Write(bufAuth)
 	if err != nil { return }
 
-	bufConn, err := qsocks.Conn(hostname, port)
+	bufConn, err := Conn(hostname, port)
 	if err != nil { return }
 	_, err = conn.Write(bufConn)
 	if err != nil { return }
 
-	res, err := qsocks.RecvResponse(conn)
+	res, err := RecvResponse(conn)
 	if err != nil { return }
 	if res != 0 { return nil, fmt.Errorf("qsocks response %d", res) }
 	return

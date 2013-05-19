@@ -1,4 +1,4 @@
-package socks
+package src
 
 import (
 	"bufio"
